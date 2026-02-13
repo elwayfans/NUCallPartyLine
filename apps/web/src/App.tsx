@@ -9,6 +9,7 @@ import { CallDetail } from './pages/CallDetail';
 import { Analytics } from './pages/Analytics';
 import { Settings } from './pages/Settings';
 import { Assistants } from './pages/Assistants';
+import { AssistantEdit } from './pages/AssistantEdit';
 
 export default function App() {
   return (
@@ -23,6 +24,7 @@ export default function App() {
           <Route path="calls/:id" element={<CallDetail />} />
           <Route path="analytics" element={<Analytics />} />
           <Route path="assistants" element={<Assistants />} />
+          <Route path="assistants/:id" element={<AssistantEdit />} />
           <Route path="settings" element={<Settings />} />
         </Route>
       </Routes>
