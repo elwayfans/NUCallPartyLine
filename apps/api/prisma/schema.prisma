@@ -1,0 +1,326 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// CONTACTS
+// ============================================
+
+model Contact {
+  id            String    @id @default(cuid())
+  firstName     String
+  lastName      String
+  phoneNumber   String    @unique
+  email         String?
+  studentName   String?
+  studentGrade  String?
+  relationship  String?
+  language      String    @default("en")
+  timezone      String    @default("America/New_York")
+  tags          String[]  @default([])
+  metadata      Json?
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  campaignContacts CampaignContact[]
+  calls            Call[]
+
+  @@index([phoneNumber])
+  @@index([lastName, firstName])
+  @@index([isActive])
+}
+
+// ============================================
+// ASSISTANTS (Local script templates)
+// ============================================
+
+model Assistant {
+  id              String    @id @default(cuid())
+  name            String
+  description     String?
+
+  // Script/prompt with variable placeholders like {{firstName}}, {{phoneNumber}}
+  systemPrompt    String    @db.Text
+  firstMessage    String?   @db.Text
+
+  // LLM settings
+  modelProvider   String    @default("openai")
+  modelName       String    @default("gpt-4o-mini")
+
+  // Voice settings
+  voiceProvider   String    @default("11labs")
+  voiceModel      String    @default("eleven_turbo_v2_5")
+  voiceId         String    @default("21m00Tcm4TlvDq8ikWAM")  // Default ElevenLabs voice
+
+  // Call settings
+  firstSpeaker    FirstSpeaker @default(ASSISTANT)
+
+  // Metadata
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  campaigns       Campaign[]
+
+  @@index([isActive])
+}
+
+enum FirstSpeaker {
+  ASSISTANT
+  USER
+}
+
+// ============================================
+// CAMPAIGNS
+// ============================================
+
+model Campaign {
+  id                String         @id @default(cuid())
+  name              String
+  description       String?
+  status            CampaignStatus @default(DRAFT)
+
+  // Local assistant reference (replaces vapiAssistantId)
+  assistantId       String?
+  assistant         Assistant?     @relation(fields: [assistantId], references: [id])
+
+  // Legacy VAPI assistant ID (for backwards compatibility)
+  vapiAssistantId   String?
+  vapiPhoneNumberId String?
+
+  scheduledAt       DateTime?
+  startedAt         DateTime?
+  completedAt       DateTime?
+
+  maxConcurrentCalls Int       @default(5)
+  retryAttempts      Int       @default(1)
+  retryDelayMinutes  Int       @default(60)
+
+  totalContacts   Int          @default(0)
+  completedCalls  Int          @default(0)
+  failedCalls     Int          @default(0)
+
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  campaignContacts CampaignContact[]
+  calls            Call[]
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  IN_PROGRESS
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+model CampaignContact {
+  id            String                @id @default(cuid())
+  campaignId    String
+  contactId     String
+  status        CampaignContactStatus @default(PENDING)
+  priority      Int                   @default(0)
+  attempts      Int                   @default(0)
+  lastAttemptAt DateTime?
+  createdAt     DateTime              @default(now())
+
+  campaign      Campaign              @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contact       Contact               @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, contactId])
+  @@index([campaignId, status])
+}
+
+enum CampaignContactStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  SKIPPED
+  DO_NOT_CALL
+}
+
+// ============================================
+// CALLS
+// ============================================
+
+model Call {
+  id              String        @id @default(cuid())
+  campaignId      String?
+  contactId       String
+
+  vapiCallId      String?       @unique
+  vapiAssistantId String
+
+  status          CallStatus    @default(QUEUED)
+  direction       CallDirection @default(OUTBOUND)
+  phoneNumber     String
+
+  scheduledAt     DateTime?
+  startedAt       DateTime?
+  answeredAt      DateTime?
+  endedAt         DateTime?
+  duration        Int?
+
+  endedReason     String?
+  outcome         CallOutcome?
+
+  attemptNumber   Int           @default(1)
+
+  cost            Decimal?      @db.Decimal(10, 4)
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  campaign        Campaign?     @relation(fields: [campaignId], references: [id])
+  contact         Contact       @relation(fields: [contactId], references: [id])
+  transcript      Transcript?
+  analytics       CallAnalytics?
+
+  @@index([vapiCallId])
+  @@index([campaignId, status])
+  @@index([contactId])
+  @@index([createdAt])
+}
+
+enum CallStatus {
+  QUEUED
+  SCHEDULED
+  RINGING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  NO_ANSWER
+  BUSY
+  VOICEMAIL
+  CANCELLED
+}
+
+enum CallDirection {
+  OUTBOUND
+  INBOUND
+}
+
+enum CallOutcome {
+  SUCCESS
+  PARTIAL
+  NO_RESPONSE
+  CALLBACK_REQUESTED
+  WRONG_NUMBER
+  DECLINED
+  TECHNICAL_FAILURE
+}
+
+// ============================================
+// TRANSCRIPTS
+// ============================================
+
+model Transcript {
+  id                String   @id @default(cuid())
+  callId            String   @unique
+
+  fullText          String   @db.Text
+  messages          Json[]
+
+  recordingUrl      String?
+  recordingDuration Int?
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  call              Call     @relation(fields: [callId], references: [id], onDelete: Cascade)
+
+  @@index([callId])
+}
+
+// ============================================
+// ANALYTICS
+// ============================================
+
+model CallAnalytics {
+  id                  String         @id @default(cuid())
+  callId              String         @unique
+
+  overallSentiment    SentimentScore?
+  sentimentConfidence Float?
+  sentimentBreakdown  Json?
+
+  extractedResponses  Json?
+  keyTopics           String[]       @default([])
+
+  speakerTurns        Int?
+  avgResponseTime     Float?
+  silencePercentage   Float?
+
+  customFields        Json?
+
+  processedAt         DateTime?
+  processingError     String?
+
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  call                Call           @relation(fields: [callId], references: [id], onDelete: Cascade)
+
+  @@index([callId])
+  @@index([overallSentiment])
+}
+
+enum SentimentScore {
+  VERY_POSITIVE
+  POSITIVE
+  NEUTRAL
+  NEGATIVE
+  VERY_NEGATIVE
+}
+
+// ============================================
+// SYSTEM
+// ============================================
+
+model CsvImport {
+  id            String       @id @default(cuid())
+  filename      String
+  status        ImportStatus @default(PENDING)
+  totalRows     Int          @default(0)
+  successCount  Int          @default(0)
+  errorCount    Int          @default(0)
+  errors        Json?
+  createdAt     DateTime     @default(now())
+  completedAt   DateTime?
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+enum ImportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model WebhookLog {
+  id          String   @id @default(cuid())
+  eventType   String
+  payload     Json
+  vapiCallId  String?
+  processed   Boolean  @default(false)
+  error       String?
+  createdAt   DateTime @default(now())
+
+  @@index([eventType])
+  @@index([vapiCallId])
+  @@index([createdAt])
+}

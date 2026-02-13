@@ -1,0 +1,32 @@
+{
+  "name": "scarif",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Scarif - Automated call system with VAPI integration",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "cd apps/api && npm run dev",
+    "dev:web": "cd apps/web && npm run dev",
+    "build:api": "cd apps/api && npm run build",
+    "build:web": "cd apps/web && npm run build",
+    "db:push": "cd apps/api && npx prisma db push",
+    "db:migrate": "cd apps/api && npx prisma migrate dev",
+    "db:studio": "cd apps/api && npx prisma studio",
+    "db:generate": "cd apps/api && npx prisma generate",
+    "install:all": "npm install && cd apps/api && npm install && cd ../web && npm install"
+  },
+  "keywords": [
+    "vapi",
+    "school",
+    "automated-calls",
+    "voice-ai"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
