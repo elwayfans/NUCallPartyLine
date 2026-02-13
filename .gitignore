@@ -44,3 +44,4 @@ temp/
 *.tgz
 .cache/
 apps/api/nul
+nul

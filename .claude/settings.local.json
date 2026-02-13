@@ -4,7 +4,11 @@
       "Bash(dir:*)",
       "Bash(npm install:*)",
       "Bash(npx tsc:*)",
-      "Bash(npx prisma db push:*)"
+      "Bash(npx prisma db push:*)",
+      "Bash(docker ps:*)",
+      "Bash(docker-compose:*)",
+      "Bash(timeout:*)",
+      "Bash(docker exec:*)"
     ]
   }
 }
