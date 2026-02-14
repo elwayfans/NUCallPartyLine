@@ -36,11 +36,17 @@ interface CallCompleteEvent {
   duration?: number;
 }
 
+interface CallAnalyticsReadyEvent {
+  type: 'call:analytics-ready';
+  callId: string;
+}
+
 type WebSocketEventHandler = {
   onCallStatus?: (event: CallStatusEvent) => void;
   onCampaignProgress?: (event: CampaignProgressEvent) => void;
   onTranscript?: (event: TranscriptEvent) => void;
   onCallComplete?: (event: CallCompleteEvent) => void;
+  onCallAnalyticsReady?: (event: CallAnalyticsReadyEvent) => void;
 };
 
 export function useWebSocket(handlers: WebSocketEventHandler = {}) {
@@ -75,6 +81,10 @@ export function useWebSocket(handlers: WebSocketEventHandler = {}) {
 
     socket.on('call:complete', (event: CallCompleteEvent) => {
       handlers.onCallComplete?.(event);
+    });
+
+    socket.on('call:analytics-ready', (event: CallAnalyticsReadyEvent) => {
+      handlers.onCallAnalyticsReady?.(event);
     });
 
     return () => {

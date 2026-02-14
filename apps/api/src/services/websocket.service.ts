@@ -131,6 +131,13 @@ export class WebSocketService {
   }
 
   /**
+   * Emit call analytics ready event (after OpenAI processing completes)
+   */
+  emitCallAnalyticsReady(callId: string): void {
+    this.io.emit('call:analytics-ready', { type: 'call:analytics-ready', callId });
+  }
+
+  /**
    * Get number of connected clients
    */
   getConnectedClientsCount(): number {

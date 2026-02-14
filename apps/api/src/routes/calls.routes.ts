@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { callsService } from '../services/calls.service.js';
+import { callSyncService } from '../services/call-sync.service.js';
 import { successResponse, errorResponse, paginatedResponse, getPaginationParams } from '../utils/response.js';
 
 const router = Router();
@@ -84,6 +85,33 @@ router.get('/:id/analytics', async (req, res, next) => {
       return errorResponse(res, 'Analytics not found', 404);
     }
     successResponse(res, analytics);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/calls/sync - Manually trigger sync for stuck calls
+router.post('/sync', async (_req, res, next) => {
+  try {
+    const result = await callSyncService.syncStuckCalls();
+    successResponse(res, result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/calls/:id/sync - Sync a single call from VAPI
+router.post('/:id/sync', async (req, res, next) => {
+  try {
+    const call = await callsService.findById(req.params.id);
+    if (!call) {
+      return errorResponse(res, 'Call not found', 404);
+    }
+    if (!call.vapiCallId) {
+      return errorResponse(res, 'Call has no VAPI ID', 400);
+    }
+    const updated = await callSyncService.syncCall(call.id, call.vapiCallId);
+    successResponse(res, { synced: updated });
   } catch (error) {
     next(error);
   }

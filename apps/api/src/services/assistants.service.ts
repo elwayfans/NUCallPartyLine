@@ -146,6 +146,7 @@ class AssistantsService {
   async getCallConfig(assistantId: string, contactData: {
     firstName?: string;
     lastName?: string;
+    fullName?: string;
     phoneNumber?: string;
     email?: string;
   }) {
@@ -157,7 +158,7 @@ class AssistantsService {
     const variables = {
       firstName: contactData.firstName,
       lastName: contactData.lastName,
-      fullName: [contactData.firstName, contactData.lastName].filter(Boolean).join(' '),
+      fullName: contactData.fullName ?? [contactData.firstName, contactData.lastName].filter(Boolean).join(' '),
       phoneNumber: contactData.phoneNumber,
       phone: contactData.phoneNumber,  // alias
       email: contactData.email,

@@ -4,6 +4,7 @@ import app from './app.js';
 import { env } from './config/env.js';
 import { prisma } from './config/database.js';
 import { WebSocketService } from './services/websocket.service.js';
+import { callSyncService } from './services/call-sync.service.js';
 
 const httpServer = createServer(app);
 
@@ -28,6 +29,9 @@ async function start() {
     httpServer.listen(env.PORT, () => {
       console.log(`Server running on http://localhost:${env.PORT}`);
       console.log(`Environment: ${env.NODE_ENV}`);
+
+      // Start auto-sync for stuck calls (every 2 minutes)
+      callSyncService.startAutoSync();
     });
   } catch (error) {
     console.error('Failed to start server:', error);
@@ -38,6 +42,7 @@ async function start() {
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   console.log('SIGTERM received, shutting down...');
+  callSyncService.stopAutoSync();
   await prisma.$disconnect();
   httpServer.close(() => {
     process.exit(0);

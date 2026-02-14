@@ -45,6 +45,8 @@ const assistantsApi = {
   getVoices: () => api.get<{ success: boolean; data: VoiceProvider[] }>('/assistants/voices'),
   previewVoice: (voiceId: string, voiceModel: string, text?: string) =>
     api.post<{ success: boolean; data: { audio: string; text: string } }>('/assistants/voices/preview', { voiceId, voiceModel, text }),
+  testCall: (id: string, data: { phoneNumber: string; variables: Record<string, string> }) =>
+    api.post<{ success: boolean; data: { message: string; callId: string; vapiCallId: string } }>(`/assistants/${id}/test-call`, data),
 };
 
 const DEFAULT_SYSTEM_PROMPT = `You are a friendly assistant calling on behalf of a university. You are reaching out to {{firstName}} to discuss important information.
@@ -96,6 +98,10 @@ export function AssistantEdit() {
   const [callTranscript, setCallTranscript] = useState<Array<{ role: string; text: string }>>([]);
   const vapiRef = useRef<Vapi | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
+
+  // Phone test call state
+  const [isPhoneCallLoading, setIsPhoneCallLoading] = useState(false);
+  const [phoneCallResult, setPhoneCallResult] = useState<{ callId: string; vapiCallId: string } | null>(null);
 
   // Fetch existing assistant if editing
   const { data: assistantData, isLoading: isLoadingAssistant } = useQuery({
@@ -303,6 +309,38 @@ export function AssistantEdit() {
       setIsMuted(newMuted);
     }
   }, [isMuted]);
+
+  const startPhoneTestCall = useCallback(async () => {
+    if (!testVariables.phone.trim()) {
+      toast.error('Please enter a phone number in the phone variable field');
+      return;
+    }
+    if (!isEditing || !id) {
+      toast.error('Please save the assistant first before making a phone test call');
+      return;
+    }
+
+    setIsPhoneCallLoading(true);
+    setPhoneCallResult(null);
+
+    try {
+      const response = await assistantsApi.testCall(id, {
+        phoneNumber: testVariables.phone,
+        variables: testVariables,
+      });
+
+      const data = response.data?.data;
+      if (data) {
+        setPhoneCallResult({ callId: data.callId, vapiCallId: data.vapiCallId });
+        toast.success('Phone call initiated! The phone should ring shortly.');
+      }
+    } catch (error) {
+      const err = error as Error & { response?: { data?: { message?: string } } };
+      toast.error(err.response?.data?.message || 'Failed to initiate phone call');
+    } finally {
+      setIsPhoneCallLoading(false);
+    }
+  }, [testVariables, isEditing, id]);
 
   const createMutation = useMutation({
     mutationFn: (data: typeof formData) => assistantsApi.create(data),
@@ -706,13 +744,26 @@ export function AssistantEdit() {
         {/* Call Controls */}
         <div className="flex items-center gap-3 mb-4">
           {!isCallActive && !isCallConnecting ? (
-            <Button
-              type="button"
-              onClick={startTestCall}
-              leftIcon={<Phone className="h-4 w-4" />}
-            >
-              Start Test Call
-            </Button>
+            <>
+              <Button
+                type="button"
+                onClick={startTestCall}
+                leftIcon={<Mic className="h-4 w-4" />}
+              >
+                Start Browser Call
+              </Button>
+              {isEditing && (
+                <Button
+                  type="button"
+                  onClick={startPhoneTestCall}
+                  isLoading={isPhoneCallLoading}
+                  leftIcon={<Phone className="h-4 w-4" />}
+                  disabled={!testVariables.phone.trim() || isPhoneCallLoading}
+                >
+                  Start Phone Call
+                </Button>
+              )}
+            </>
           ) : (
             <>
               <Button
@@ -747,6 +798,12 @@ export function AssistantEdit() {
             </span>
           )}
         </div>
+
+        {phoneCallResult && (
+          <div className="mb-4 text-xs text-green-700 bg-green-50 border border-green-200 rounded p-2">
+            Phone call initiated successfully. Call ID: {phoneCallResult.callId}
+          </div>
+        )}
 
         {/* Transcript */}
         {callTranscript.length > 0 && (

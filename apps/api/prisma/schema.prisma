@@ -158,7 +158,7 @@ enum CampaignContactStatus {
 model Call {
   id              String        @id @default(cuid())
   campaignId      String?
-  contactId       String
+  contactId       String?
 
   vapiCallId      String?       @unique
   vapiAssistantId String
@@ -184,7 +184,7 @@ model Call {
   updatedAt       DateTime      @updatedAt
 
   campaign        Campaign?     @relation(fields: [campaignId], references: [id])
-  contact         Contact       @relation(fields: [contactId], references: [id])
+  contact         Contact?      @relation(fields: [contactId], references: [id])
   transcript      Transcript?
   analytics       CallAnalytics?
 
@@ -258,6 +258,7 @@ model CallAnalytics {
 
   extractedResponses  Json?
   keyTopics           String[]       @default([])
+  summary             String?        @db.Text
 
   speakerTurns        Int?
   avgResponseTime     Float?

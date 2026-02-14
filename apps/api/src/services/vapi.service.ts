@@ -36,19 +36,26 @@ export class VapiService {
 
     try {
       // Make VAPI API call
-      const vapiCall = await this.client.calls.create({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const createParams: Record<string, any> = {
         assistantId: params.assistantId,
         phoneNumberId: params.phoneNumberId ?? env.VAPI_PHONE_NUMBER_ID,
         customer: {
           number: params.phoneNumber,
         },
-        // Pass internal call ID for webhook correlation
         metadata: {
           internalCallId: callRecord.id,
           campaignId: params.campaignId,
           ...params.metadata,
         },
-      });
+      };
+      // Tell VAPI where to send webhooks (serverUrl lives on the assistant object)
+      if (env.SERVER_URL) {
+        createParams.assistantOverrides = {
+          serverUrl: `${env.SERVER_URL}/api/webhooks/vapi`,
+        };
+      }
+      const vapiCall = await this.client.calls.create(createParams as any);
 
       // Update with VAPI call ID
       await prisma.call.update({
@@ -139,6 +146,72 @@ export class VapiService {
     }
 
     return results;
+  }
+
+  /**
+   * Create a single outbound test call using an inline assistant config.
+   * No contactId or campaignId required — the call record is still created
+   * so webhooks (transcripts, analytics) work normally.
+   */
+  async createTestCall(params: {
+    assistantId: string;
+    phoneNumber: string;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    assistantConfig: Record<string, any>;
+    phoneNumberId?: string;
+  }) {
+    const callRecord = await prisma.call.create({
+      data: {
+        phoneNumber: params.phoneNumber,
+        vapiAssistantId: params.assistantId,
+        status: 'QUEUED',
+        direction: 'OUTBOUND',
+      },
+    });
+
+    try {
+      // Inject serverUrl into the inline assistant config so VAPI sends webhooks here
+      const assistantWithServer = { ...params.assistantConfig };
+      if (env.SERVER_URL) {
+        assistantWithServer.serverUrl = `${env.SERVER_URL}/api/webhooks/vapi`;
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const createParams: Record<string, any> = {
+        assistant: assistantWithServer,
+        phoneNumberId: params.phoneNumberId ?? env.VAPI_PHONE_NUMBER_ID,
+        customer: {
+          number: params.phoneNumber,
+        },
+        metadata: {
+          internalCallId: callRecord.id,
+          isTestCall: true,
+        },
+      };
+      const vapiCall = await this.client.calls.create(createParams as any);
+
+      await prisma.call.update({
+        where: { id: callRecord.id },
+        data: {
+          vapiCallId: vapiCall.id,
+          status: 'SCHEDULED',
+        },
+      });
+
+      return {
+        callId: callRecord.id,
+        vapiCallId: vapiCall.id,
+      };
+    } catch (error) {
+      await prisma.call.update({
+        where: { id: callRecord.id },
+        data: {
+          status: 'FAILED',
+          endedReason: error instanceof Error ? error.message : 'Unknown error',
+          endedAt: new Date(),
+        },
+      });
+      throw error;
+    }
   }
 
   /**

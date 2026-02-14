@@ -73,3 +73,29 @@ export function SentimentBadge({ sentiment }: { sentiment: string }) {
   const config = sentimentConfig[sentiment] ?? { variant: 'default', label: sentiment };
   return <Badge variant={config.variant}>{config.label}</Badge>;
 }
+
+export function OutcomeBadge({ outcome }: { outcome: string }) {
+  const outcomeConfig: Record<string, { variant: BadgeProps['variant']; label: string }> = {
+    SUCCESS: { variant: 'success', label: 'Success' },
+    PARTIAL: { variant: 'warning', label: 'Partial' },
+    NO_RESPONSE: { variant: 'default', label: 'No Response' },
+    CALLBACK_REQUESTED: { variant: 'info', label: 'Callback' },
+    WRONG_NUMBER: { variant: 'danger', label: 'Wrong Number' },
+    DECLINED: { variant: 'danger', label: 'Declined' },
+    TECHNICAL_FAILURE: { variant: 'danger', label: 'Tech Failure' },
+  };
+
+  const config = outcomeConfig[outcome] ?? { variant: 'default', label: outcome };
+  return <Badge variant={config.variant}>{config.label}</Badge>;
+}
+
+export function CallResultBadge({ result }: { result: string }) {
+  const resultConfig: Record<string, { variant: BadgeProps['variant']; label: string }> = {
+    PASS: { variant: 'success', label: 'Pass' },
+    FAIL: { variant: 'danger', label: 'Fail' },
+    INCONCLUSIVE: { variant: 'warning', label: 'Inconclusive' },
+  };
+
+  const config = resultConfig[result] ?? { variant: 'default', label: result };
+  return <Badge variant={config.variant}>{config.label}</Badge>;
+}

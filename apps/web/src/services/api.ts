@@ -54,14 +54,57 @@ export interface Campaign {
   completedAt?: string | null;
 }
 
+export interface Transcript {
+  id: string;
+  callId: string;
+  fullText: string;
+  messages: Array<{ role: string; content: string; timestamp?: number }>;
+  recordingUrl?: string | null;
+  recordingDuration?: number | null;
+}
+
+export interface CallAnalytics {
+  id: string;
+  callId: string;
+  overallSentiment?: string | null;
+  sentimentConfidence?: number | null;
+  sentimentBreakdown?: { positive: number; negative: number; neutral: number } | null;
+  extractedResponses?: Record<string, string> | null;
+  keyTopics: string[];
+  speakerTurns?: number | null;
+  summary?: string | null;
+  customFields?: {
+    callResult?: 'PASS' | 'FAIL' | 'INCONCLUSIVE';
+    callResultReason?: string;
+    outcomeReason?: string;
+    appointmentDetails?: {
+      scheduled: boolean;
+      date?: string;
+      time?: string;
+      location?: string;
+      type?: string;
+      notes?: string;
+    } | null;
+    actionItems?: string[];
+    nextSteps?: string[];
+    vapiSummary?: string;
+    vapiAnalysis?: Record<string, unknown>;
+    vapiStructuredData?: Record<string, unknown> | null;
+  } | null;
+  processedAt?: string | null;
+  processingError?: string | null;
+}
+
 export interface Call {
   id: string;
   campaignId?: string | null;
-  contactId: string;
+  contactId?: string | null;
   vapiCallId?: string | null;
   status: string;
+  outcome?: string | null;
   phoneNumber: string;
   duration?: number | null;
+  cost?: number | string | null;
   startedAt?: string | null;
   endedAt?: string | null;
   endedReason?: string | null;
@@ -71,11 +114,16 @@ export interface Call {
     firstName: string;
     lastName: string;
     phoneNumber: string;
-  };
+    email?: string | null;
+    studentName?: string | null;
+    studentGrade?: string | null;
+  } | null;
   campaign?: {
     id: string;
     name: string;
-  };
+  } | null;
+  transcript?: Transcript | null;
+  analytics?: CallAnalytics | null;
 }
 
 export interface PaginatedResponse<T> {
@@ -182,6 +230,10 @@ export const callsApi = {
   getAnalytics: (id: string) => api.get(`/calls/${id}/analytics`),
 
   getStats: () => api.get('/calls/stats'),
+
+  syncAll: () => api.post<ApiResponse<{ synced: number; errors: number }>>('/calls/sync'),
+
+  syncOne: (id: string) => api.post<ApiResponse<{ synced: boolean }>>(`/calls/${id}/sync`),
 };
 
 // Analytics API

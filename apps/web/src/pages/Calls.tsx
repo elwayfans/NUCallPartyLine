@@ -1,15 +1,31 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Phone, Clock, FileText } from 'lucide-react';
-import { callsApi, type Call } from '../services/api';
+import { Phone, Clock, RefreshCw } from 'lucide-react';
+import { callsApi } from '../services/api';
 import { Button } from '../components/common/Button';
-import { CallStatusBadge } from '../components/common/Badge';
-import { formatDistanceToNow, format } from 'date-fns';
+import { CallStatusBadge, OutcomeBadge } from '../components/common/Badge';
+import { formatDistanceToNow } from 'date-fns';
+import { useWebSocket } from '../hooks/useWebSocket';
 
 export function Calls() {
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<string>('');
+  const [syncing, setSyncing] = useState(false);
+  const queryClient = useQueryClient();
+
+  // Auto-refresh call list when calls complete or analytics are processed
+  useWebSocket({
+    onCallComplete: () => {
+      queryClient.invalidateQueries({ queryKey: ['calls'] });
+    },
+    onCallAnalyticsReady: () => {
+      queryClient.invalidateQueries({ queryKey: ['calls'] });
+    },
+    onCallStatus: () => {
+      queryClient.invalidateQueries({ queryKey: ['calls'] });
+    },
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ['calls', { page, status: statusFilter }],
@@ -35,6 +51,23 @@ export function Calls() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Call History</h1>
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={syncing}
+          onClick={async () => {
+            setSyncing(true);
+            try {
+              await callsApi.syncAll();
+              queryClient.invalidateQueries({ queryKey: ['calls'] });
+            } finally {
+              setSyncing(false);
+            }
+          }}
+        >
+          <RefreshCw className={`h-4 w-4 mr-1.5 ${syncing ? 'animate-spin' : ''}`} />
+          {syncing ? 'Syncing...' : 'Sync from VAPI'}
+        </Button>
       </div>
 
       {/* Filters */}
@@ -71,9 +104,10 @@ export function Calls() {
           </div>
         ) : (
           calls.map((call) => (
-            <div
+            <Link
               key={call.id}
-              className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition-shadow"
+              to={`/calls/${call.id}`}
+              className="block rounded-lg border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition-shadow"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
@@ -86,37 +120,33 @@ export function Calls() {
                         {call.contact?.firstName} {call.contact?.lastName}
                       </span>
                       <CallStatusBadge status={call.status} />
+                      {call.outcome && <OutcomeBadge outcome={call.outcome} />}
                     </div>
                     <p className="text-sm text-gray-500">{call.phoneNumber}</p>
+                    <p className="text-xs text-gray-400">
+                      {call.createdAt
+                        ? formatDistanceToNow(new Date(call.createdAt), { addSuffix: true })
+                        : '-'}
+                    </p>
+                    {call.analytics?.summary && (
+                      <p className="mt-1 text-sm text-gray-600 line-clamp-1">
+                        {call.analytics.summary}
+                      </p>
+                    )}
                     {call.campaign && (
-                      <Link
-                        to={`/campaigns/${call.campaign.id}`}
-                        className="text-sm text-primary-600 hover:underline"
-                      >
+                      <span className="text-sm text-primary-600">
                         {call.campaign.name}
-                      </Link>
+                      </span>
                     )}
                   </div>
                 </div>
 
-                <div className="flex items-center gap-6 text-sm text-gray-500">
-                  <div className="flex items-center gap-1">
-                    <Clock className="h-4 w-4" />
-                    <span>{formatDuration(call.duration)}</span>
-                  </div>
-                  <span>
-                    {call.createdAt
-                      ? formatDistanceToNow(new Date(call.createdAt), { addSuffix: true })
-                      : '-'}
-                  </span>
-                  <Link to={`/calls/${call.id}`}>
-                    <Button variant="ghost" size="sm">
-                      <FileText className="h-4 w-4" />
-                    </Button>
-                  </Link>
+                <div className="flex items-center gap-1 text-sm text-gray-500">
+                  <Clock className="h-4 w-4" />
+                  <span>{formatDuration(call.duration)}</span>
                 </div>
               </div>
-            </div>
+            </Link>
           ))
         )}
       </div>

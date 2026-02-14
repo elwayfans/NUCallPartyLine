@@ -64,6 +64,13 @@ export class CallsService {
               name: true,
             },
           },
+          analytics: {
+            select: {
+              summary: true,
+              overallSentiment: true,
+              customFields: true,
+            },
+          },
         },
       }),
       prisma.call.count({ where }),

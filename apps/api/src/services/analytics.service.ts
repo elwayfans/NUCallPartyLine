@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 import { prisma } from '../config/database.js';
 import { env } from '../config/env.js';
-import type { SentimentScore } from '@prisma/client';
+import type { SentimentScore, CallOutcome } from '@prisma/client';
 
 interface AnalysisResult {
   sentiment: SentimentScore;
@@ -9,6 +9,21 @@ interface AnalysisResult {
   breakdown: { positive: number; negative: number; neutral: number };
   responses: Record<string, string>;
   topics: string[];
+  summary: string;
+  outcome: string;
+  outcomeReason: string;
+  callResult: 'PASS' | 'FAIL' | 'INCONCLUSIVE';
+  callResultReason: string;
+  appointmentDetails: {
+    scheduled: boolean;
+    date?: string;
+    time?: string;
+    location?: string;
+    type?: string;
+    notes?: string;
+  } | null;
+  actionItems: string[];
+  nextSteps: string[];
 }
 
 export class AnalyticsService {
@@ -50,6 +65,28 @@ export class AnalyticsService {
     try {
       const analysis = await this.analyzeTranscript(transcript.fullText);
 
+      // Read any existing data (e.g., VAPI summary captured by webhook)
+      const existing = await prisma.callAnalytics.findUnique({
+        where: { callId },
+        select: { customFields: true },
+      });
+      const existingCustom = (existing?.customFields as Record<string, unknown>) ?? {};
+
+      // Build customFields payload
+      const customFields = {
+        ...existingCustom,
+        callResult: analysis.callResult,
+        callResultReason: analysis.callResultReason,
+        outcomeReason: analysis.outcomeReason,
+        appointmentDetails: analysis.appointmentDetails,
+        actionItems: analysis.actionItems,
+        nextSteps: analysis.nextSteps,
+      };
+
+      // Calculate speaker turns from messages
+      const messages = transcript.messages as Array<{ role: string }>;
+      const speakerTurns = messages?.length ?? 0;
+
       await prisma.callAnalytics.upsert({
         where: { callId },
         create: {
@@ -59,6 +96,9 @@ export class AnalyticsService {
           sentimentBreakdown: analysis.breakdown,
           extractedResponses: analysis.responses,
           keyTopics: analysis.topics,
+          summary: analysis.summary,
+          speakerTurns,
+          customFields,
           processedAt: new Date(),
         },
         update: {
@@ -67,12 +107,37 @@ export class AnalyticsService {
           sentimentBreakdown: analysis.breakdown,
           extractedResponses: analysis.responses,
           keyTopics: analysis.topics,
+          summary: analysis.summary,
+          speakerTurns,
+          customFields,
           processedAt: new Date(),
           processingError: null,
         },
       });
 
-      console.log(`Analytics processed for call ${callId}`);
+      // Set Call.outcome
+      const validOutcomes: CallOutcome[] = [
+        'SUCCESS', 'PARTIAL', 'NO_RESPONSE', 'CALLBACK_REQUESTED',
+        'WRONG_NUMBER', 'DECLINED', 'TECHNICAL_FAILURE',
+      ];
+      const outcome: CallOutcome = validOutcomes.includes(analysis.outcome as CallOutcome)
+        ? (analysis.outcome as CallOutcome)
+        : 'PARTIAL';
+
+      await prisma.call.update({
+        where: { id: callId },
+        data: { outcome },
+      });
+
+      console.log(`Analytics processed for call ${callId} - outcome: ${outcome}`);
+
+      // Notify frontend that analytics are ready
+      try {
+        const { wsService } = await import('../index.js');
+        wsService.emitCallAnalyticsReady(callId);
+      } catch {
+        // wsService may not be available in non-server contexts
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error(`Analytics processing failed for call ${callId}:`, errorMessage);
@@ -94,12 +159,43 @@ export class AnalyticsService {
    * Analyze a transcript using OpenAI
    */
   private async analyzeTranscript(transcript: string): Promise<AnalysisResult> {
-    const prompt = `Analyze this school call transcript and provide:
-1. Overall sentiment (VERY_POSITIVE, POSITIVE, NEUTRAL, NEGATIVE, VERY_NEGATIVE)
-2. Confidence score (0-1)
-3. Sentiment breakdown percentages (positive, negative, neutral should sum to 100)
-4. Key responses to questions asked (extract as question: answer pairs)
-5. Main topics discussed
+    const prompt = `You are analyzing a school-related phone call transcript. Extract the following structured data:
+
+1. **Sentiment Analysis**
+   - Overall sentiment: VERY_POSITIVE, POSITIVE, NEUTRAL, NEGATIVE, or VERY_NEGATIVE
+   - Confidence score: 0.0 to 1.0
+   - Breakdown: percentages for positive, negative, neutral (must sum to 100)
+
+2. **Call Summary**
+   - Write a concise 2-3 sentence summary of the call, focusing on what was discussed and any decisions made.
+
+3. **Call Outcome** - Determine the most appropriate outcome:
+   - SUCCESS: Call objectives were fully met
+   - PARTIAL: Some objectives met but not all
+   - NO_RESPONSE: Could not reach the person (voicemail, no pickup)
+   - CALLBACK_REQUESTED: The person asked to be called back later
+   - WRONG_NUMBER: Number was wrong or person is not the intended contact
+   - DECLINED: The person explicitly declined or refused
+   - TECHNICAL_FAILURE: Call had technical issues
+
+4. **Call Result (Pass/Fail)**
+   - PASS: The call achieved its primary purpose
+   - FAIL: The call did not achieve its primary purpose
+   - INCONCLUSIVE: Cannot determine from the conversation
+   - Provide a brief reason for the classification.
+
+5. **Appointment Details** (if any appointment, meeting, or event was discussed)
+   - Was an appointment/meeting scheduled? (true/false)
+   - If yes: date, time, location, type of appointment, any notes
+   - If no appointment was discussed, return null.
+
+6. **Extracted Responses** - Key question/answer pairs from the conversation.
+
+7. **Key Topics** - Main topics discussed in the call.
+
+8. **Action Items** - Any action items or follow-ups mentioned.
+
+9. **Next Steps** - What happens next after this call.
 
 Transcript:
 ${transcript}
@@ -109,16 +205,34 @@ Respond ONLY with valid JSON in this exact format:
   "sentiment": "SENTIMENT_VALUE",
   "confidence": 0.85,
   "breakdown": {"positive": 60, "negative": 10, "neutral": 30},
+  "summary": "Two to three sentence summary of the call.",
+  "outcome": "SUCCESS",
+  "outcomeReason": "Brief explanation of why this outcome was chosen",
+  "callResult": "PASS",
+  "callResultReason": "Brief explanation of pass/fail determination",
+  "appointmentDetails": {
+    "scheduled": true,
+    "date": "2025-02-15",
+    "time": "2:30 PM",
+    "location": "Main Office",
+    "type": "Parent-teacher conference",
+    "notes": "Bring recent report card"
+  },
   "responses": {"Will you attend the event?": "Yes, confirmed for 2 people"},
-  "topics": ["event attendance", "transportation needs"]
-}`;
+  "topics": ["event attendance", "transportation needs"],
+  "actionItems": ["Send confirmation email", "Reserve parking spot"],
+  "nextSteps": ["Follow up call in 2 weeks"]
+}
+
+If no appointment was discussed, set appointmentDetails to null.
+If there are no action items or next steps, use empty arrays.`;
 
     const response = await this.openai.chat.completions.create({
       model: 'gpt-4o',
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' },
       temperature: 0.3,
-      max_tokens: 1000,
+      max_tokens: 2000,
     });
 
     const content = response.choices[0]?.message?.content;
@@ -126,21 +240,28 @@ Respond ONLY with valid JSON in this exact format:
       throw new Error('No response from OpenAI');
     }
 
-    const parsed = JSON.parse(content) as AnalysisResult;
+    const parsed = JSON.parse(content);
 
     // Validate sentiment value
     const validSentiments: SentimentScore[] = [
-      'VERY_POSITIVE',
-      'POSITIVE',
-      'NEUTRAL',
-      'NEGATIVE',
-      'VERY_NEGATIVE',
+      'VERY_POSITIVE', 'POSITIVE', 'NEUTRAL', 'NEGATIVE', 'VERY_NEGATIVE',
     ];
-    if (!validSentiments.includes(parsed.sentiment)) {
-      parsed.sentiment = 'NEUTRAL';
-    }
 
-    return parsed;
+    return {
+      sentiment: validSentiments.includes(parsed.sentiment) ? parsed.sentiment : 'NEUTRAL',
+      confidence: parsed.confidence ?? 0.5,
+      breakdown: parsed.breakdown ?? { positive: 33, negative: 33, neutral: 34 },
+      responses: parsed.responses ?? {},
+      topics: parsed.topics ?? [],
+      summary: parsed.summary ?? 'No summary available.',
+      outcome: parsed.outcome ?? 'PARTIAL',
+      outcomeReason: parsed.outcomeReason ?? '',
+      callResult: parsed.callResult ?? 'INCONCLUSIVE',
+      callResultReason: parsed.callResultReason ?? '',
+      appointmentDetails: parsed.appointmentDetails ?? null,
+      actionItems: parsed.actionItems ?? [],
+      nextSteps: parsed.nextSteps ?? [],
+    };
   }
 
   /**

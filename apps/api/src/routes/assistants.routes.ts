@@ -1,7 +1,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { assistantsService } from '../services/assistants.service.js';
+import { vapiService } from '../services/vapi.service.js';
+import { env } from '../config/env.js';
 import { successResponse, errorResponse, paginatedResponse, getPaginationParams } from '../utils/response.js';
+import { normalizePhoneNumber, isValidPhoneNumber } from '../utils/phone-formatter.js';
 
 const router = Router();
 
@@ -269,6 +272,70 @@ router.post('/voices/preview', async (req, res, next) => {
     const audioDataUrl = `data:audio/mpeg;base64,${base64Audio}`;
 
     successResponse(res, { audio: audioDataUrl, text: previewText });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/assistants/:id/test-call - Make a real outbound test call
+const testCallSchema = z.object({
+  phoneNumber: z.string().min(1, 'Phone number is required'),
+  variables: z.object({
+    firstName: z.string().optional(),
+    lastName: z.string().optional(),
+    fullName: z.string().optional(),
+    phone: z.string().optional(),
+    email: z.string().optional(),
+  }).optional(),
+});
+
+router.post('/:id/test-call', async (req, res, next) => {
+  try {
+    const { phoneNumber: rawPhone, variables } = testCallSchema.parse(req.body);
+
+    // Normalize to E.164 format
+    const phoneNumber = normalizePhoneNumber(rawPhone);
+    if (!isValidPhoneNumber(phoneNumber)) {
+      return errorResponse(res, `Invalid phone number: "${rawPhone}". Use E.164 format (e.g. +15551234567) or a 10-digit US number.`, 400);
+    }
+
+    // Resolve VAPI phone number ID — look it up from VAPI if not a UUID
+    let phoneNumberId = env.VAPI_PHONE_NUMBER_ID;
+    if (!phoneNumberId || !/^[0-9a-f-]{36}$/i.test(phoneNumberId)) {
+      // Not a UUID — try to find it from VAPI's phone number list
+      const phoneNumbers = await vapiService.listPhoneNumbers();
+      const match = phoneNumbers.find(pn => pn.number === normalizePhoneNumber(phoneNumberId ?? ''));
+      if (match) {
+        phoneNumberId = match.id;
+      } else if (phoneNumbers.length > 0) {
+        phoneNumberId = phoneNumbers[0].id;
+      } else {
+        return errorResponse(res, 'No phone numbers found in your VAPI account. Add one at dashboard.vapi.ai.', 500);
+      }
+    }
+
+    // Build inline assistant config with variable substitution
+    const assistantConfig = await assistantsService.getCallConfig(req.params.id, {
+      firstName: variables?.firstName,
+      lastName: variables?.lastName,
+      fullName: variables?.fullName,
+      phoneNumber: variables?.phone ?? phoneNumber,
+      email: variables?.email,
+    });
+
+    // Create the test call via VAPI with inline config
+    const result = await vapiService.createTestCall({
+      assistantId: req.params.id,
+      phoneNumber,
+      phoneNumberId,
+      assistantConfig: assistantConfig as Record<string, unknown>,
+    });
+
+    successResponse(res, {
+      message: 'Test call initiated',
+      callId: result.callId,
+      vapiCallId: result.vapiCallId,
+    }, 201);
   } catch (error) {
     next(error);
   }

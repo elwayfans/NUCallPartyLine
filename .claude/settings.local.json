@@ -8,7 +8,12 @@
       "Bash(docker ps:*)",
       "Bash(docker-compose:*)",
       "Bash(timeout:*)",
-      "Bash(docker exec:*)"
+      "Bash(docker exec:*)",
+      "Bash(npx prisma generate:*)",
+      "Bash(npx vite build:*)",
+      "Bash(npx ts-node:*)",
+      "Bash(npx tsx:*)",
+      "Bash(ls \"c:\\\\Aaron BB Repos\\\\NUCallPartyLine\\\\NUCallPartyLine_repo\\\\node_modules\\\\@vapi-ai\\\\server-sdk\\\\api\\\\types\"\" | grep -i \"artifac|record \")"
     ]
   }
 }

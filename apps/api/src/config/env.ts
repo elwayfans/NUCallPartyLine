@@ -19,6 +19,9 @@ const envSchema = z.object({
   VAPI_ASSISTANT_ID: z.string().min(1),
   VAPI_PHONE_NUMBER_ID: z.string().optional(),
 
+  // Server URL for VAPI webhooks (ngrok URL in dev, public URL in prod)
+  SERVER_URL: z.string().optional(),
+
   // OpenAI
   OPENAI_API_KEY: z.string().min(1),
 
