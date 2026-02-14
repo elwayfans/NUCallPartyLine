@@ -6,6 +6,7 @@ export interface ContactFilters {
   search?: string;
   isActive?: boolean;
   tags?: string[];
+  importBatchId?: string;
 }
 
 export interface PaginationOptions {
@@ -30,12 +31,15 @@ export class ContactsService {
       ];
     }
 
-    if (filters.isActive !== undefined) {
-      where.isActive = filters.isActive;
-    }
+    // Default to showing only active contacts unless explicitly set to false
+    where.isActive = filters.isActive !== undefined ? filters.isActive : true;
 
     if (filters.tags && filters.tags.length > 0) {
       where.tags = { hasSome: filters.tags };
+    }
+
+    if (filters.importBatchId) {
+      where.importBatchId = filters.importBatchId;
     }
 
     const [contacts, totalItems] = await Promise.all([
@@ -140,15 +144,18 @@ export class ContactsService {
     });
   }
 
-  async importFromCsv(buffer: Buffer): Promise<{
+  async importFromCsv(buffer: Buffer, batchName?: string): Promise<{
     importId: string;
     result: ParseResult;
     created: number;
     updated: number;
   }> {
+    const name = batchName?.trim() || `Import ${new Date().toLocaleString()}`;
+
     // Create import record
     const importRecord = await prisma.csvImport.create({
       data: {
+        name,
         filename: 'upload.csv',
         status: 'PROCESSING',
       },
@@ -161,25 +168,35 @@ export class ContactsService {
       let created = 0;
       let updated = 0;
 
-      // Process contacts in batches
+      // Process contacts
       for (const contact of parseResult.contacts) {
         const existing = await this.findByPhoneNumber(contact.phoneNumber);
 
         if (existing) {
-          await this.update(existing.id, {
-            firstName: contact.firstName,
-            lastName: contact.lastName,
-            email: contact.email ?? null,
-            studentName: contact.studentName ?? null,
-            studentGrade: contact.studentGrade ?? null,
-            relationship: contact.relationship ?? null,
-            language: contact.language,
-            timezone: contact.timezone,
-            tags: contact.tags,
+          await prisma.contact.update({
+            where: { id: existing.id },
+            data: {
+              firstName: contact.firstName,
+              lastName: contact.lastName,
+              email: contact.email ?? null,
+              studentName: contact.studentName ?? null,
+              studentGrade: contact.studentGrade ?? null,
+              relationship: contact.relationship ?? null,
+              language: contact.language,
+              timezone: contact.timezone,
+              tags: contact.tags,
+              importBatchId: importRecord.id,
+              isActive: true,
+            },
           });
           updated++;
         } else {
-          await this.create(contact);
+          await prisma.contact.create({
+            data: {
+              ...contact,
+              importBatchId: importRecord.id,
+            },
+          });
           created++;
         }
       }
@@ -279,6 +296,19 @@ export class ContactsService {
     ]);
 
     return { total, active };
+  }
+
+  async listImportBatches() {
+    return prisma.csvImport.findMany({
+      where: { status: 'COMPLETED' },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        name: true,
+        successCount: true,
+        createdAt: true,
+      },
+    });
   }
 }
 

@@ -169,4 +169,14 @@ router.post('/:id/cancel', async (req, res, next) => {
   }
 });
 
+// POST /api/campaigns/:id/reset - Reset campaign to DRAFT
+router.post('/:id/reset', async (req, res, next) => {
+  try {
+    const campaign = await campaignsService.reset(req.params.id);
+    successResponse(res, campaign);
+  } catch (error) {
+    next(error);
+  }
+});
+
 export default router;

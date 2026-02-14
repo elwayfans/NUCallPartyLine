@@ -42,6 +42,8 @@ export interface Campaign {
   name: string;
   description?: string | null;
   status: 'DRAFT' | 'SCHEDULED' | 'IN_PROGRESS' | 'PAUSED' | 'COMPLETED' | 'CANCELLED';
+  assistantId?: string | null;
+  assistant?: { id: string; name: string } | null;
   vapiAssistantId: string;
   vapiPhoneNumberId?: string | null;
   totalContacts: number;
@@ -77,6 +79,8 @@ export interface CallAnalytics {
     callResult?: 'PASS' | 'FAIL' | 'INCONCLUSIVE';
     callResultReason?: string;
     outcomeReason?: string;
+    interestLevel?: string;
+    objections?: string[];
     appointmentDetails?: {
       scheduled: boolean;
       date?: string;
@@ -85,6 +89,7 @@ export interface CallAnalytics {
       type?: string;
       notes?: string;
     } | null;
+    extractedResponses?: Record<string, string> | null;
     actionItems?: string[];
     nextSteps?: string[];
     vapiSummary?: string;
@@ -144,7 +149,7 @@ export interface ApiResponse<T> {
 
 // Contacts API
 export const contactsApi = {
-  list: (params?: { page?: number; pageSize?: number; search?: string; isActive?: boolean }) =>
+  list: (params?: { page?: number; pageSize?: number; search?: string; isActive?: boolean; importBatchId?: string }) =>
     api.get<PaginatedResponse<Contact>>('/contacts', { params }),
 
   get: (id: string) => api.get<ApiResponse<Contact>>(`/contacts/${id}`),
@@ -156,15 +161,18 @@ export const contactsApi = {
 
   delete: (id: string) => api.delete(`/contacts/${id}`),
 
-  import: (file: File) => {
+  import: (file: File, batchName?: string) => {
     const formData = new FormData();
     formData.append('file', file);
+    if (batchName) formData.append('batchName', batchName);
     return api.post('/contacts/import', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+      headers: { 'Content-Type': undefined },
     });
   },
 
   getImportStatus: (importId: string) => api.get(`/contacts/import/${importId}/status`),
+
+  listImportBatches: () => api.get<ApiResponse<Array<{ id: string; name: string; successCount: number; createdAt: string }>>>('/contacts/import/batches'),
 
   exportCsv: () => api.get('/contacts/export', { responseType: 'blob' }),
 
@@ -206,6 +214,8 @@ export const campaignsApi = {
   resume: (id: string) => api.post(`/campaigns/${id}/resume`),
 
   cancel: (id: string) => api.post(`/campaigns/${id}/cancel`),
+
+  reset: (id: string) => api.post<ApiResponse<Campaign>>(`/campaigns/${id}/reset`),
 
   getProgress: (id: string) => api.get(`/campaigns/${id}/progress`),
 

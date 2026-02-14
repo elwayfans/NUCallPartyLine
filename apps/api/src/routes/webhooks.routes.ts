@@ -1,8 +1,8 @@
 import { Router } from 'express';
-import type { Prisma, CallOutcome } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import type { CallOutcome } from '@prisma/client';
 import { prisma } from '../config/database.js';
 import { callsService } from '../services/calls.service.js';
-import { analyticsService } from '../services/analytics.service.js';
 import { wsService } from '../index.js';
 
 const router = Router();
@@ -311,107 +311,113 @@ async function handleEndOfCall(message: VapiWebhookMessage) {
       recordingDuration: artifact.recording?.duration,
     });
 
-    // Use VAPI analysis as primary source (instant), fall back to OpenAI if missing
+    // Process VAPI analysis — all analytics come from VAPI's built-in analysis
     const vapiAnalysis = message.analysis;
-    const vapiSummary = artifact.summary ?? vapiAnalysis?.summary;
+    const vapiSummary = vapiAnalysis?.summary ?? artifact.summary;
     const vapiSuccessEval = vapiAnalysis?.successEvaluation;
-    const vapiStructuredData = vapiAnalysis?.structuredData;
+    const sd = vapiAnalysis?.structuredData; // structured data from analysisPlan
 
-    if (vapiSummary || vapiSuccessEval !== undefined) {
-      // --- VAPI-first path: process analysis directly from VAPI (no OpenAI needed) ---
+    // Use structured data outcome if available, fall back to successEvaluation
+    // Note: schema uses "callOutcome" (flat format), also check "outcome" for compatibility
+    const isSuccess = vapiSuccessEval === 'true';
+    let outcome: CallOutcome = (sd?.callOutcome as CallOutcome) ?? (sd?.outcome as CallOutcome) ??
+      (isSuccess ? 'SUCCESS' : 'PARTIAL');
+    let callResult: string = (sd?.callResult as string) ??
+      (isSuccess ? 'PASS' : 'FAIL');
 
-      // Map successEvaluation to outcome
-      const isSuccess = vapiSuccessEval === 'true';
-      let outcome: CallOutcome = isSuccess ? 'SUCCESS' : 'PARTIAL';
-      let callResult: 'PASS' | 'FAIL' | 'INCONCLUSIVE' = isSuccess ? 'PASS' : 'FAIL';
-
-      // Refine outcome for short/failed calls
-      if (!isSuccess && endedReason) {
-        const reason = endedReason.toLowerCase();
-        if (reason.includes('no-answer') || reason.includes('voicemail')) {
-          outcome = 'NO_RESPONSE';
-        } else if (reason.includes('busy')) {
-          outcome = 'NO_RESPONSE';
-        } else if (reason.includes('error') || reason.includes('failed')) {
-          outcome = 'TECHNICAL_FAILURE';
-        }
-      }
-      // If call was very short (< 15s) and not success, likely no real conversation
-      if (!isSuccess && duration && duration < 15) {
+    // Refine outcome for short/failed calls
+    if (!isSuccess && endedReason) {
+      const reason = endedReason.toLowerCase();
+      if (reason.includes('no-answer') || reason.includes('voicemail') || reason.includes('busy')) {
         outcome = 'NO_RESPONSE';
-        callResult = 'INCONCLUSIVE';
+      } else if (reason.includes('error') || reason.includes('failed')) {
+        outcome = 'TECHNICAL_FAILURE';
       }
-
-      // Extract appointment details from VAPI structuredData
-      let appointmentDetails: Record<string, unknown> | null = null;
-      if (vapiStructuredData) {
-        // VAPI structured data shape depends on assistant config
-        // Look for common appointment-related fields
-        const apptBooked = vapiStructuredData.appointmentBooked
-          ?? vapiStructuredData.appointment_booked
-          ?? vapiStructuredData.booked;
-        if (apptBooked === true || apptBooked === 'true' || apptBooked === 'yes') {
-          appointmentDetails = {
-            scheduled: true,
-            date: vapiStructuredData.appointmentDate ?? vapiStructuredData.date,
-            time: vapiStructuredData.appointmentTime ?? vapiStructuredData.time,
-            location: vapiStructuredData.location,
-            type: vapiStructuredData.appointmentType ?? vapiStructuredData.type,
-            notes: vapiStructuredData.notes,
-          };
-          outcome = 'SUCCESS';
-          callResult = 'PASS';
-        }
-      }
-
-      const customFields = {
-        callResult,
-        callResultReason: vapiSummary ?? '',
-        outcomeReason: vapiSummary ?? '',
-        appointmentDetails,
-        actionItems: [] as string[],
-        nextSteps: [] as string[],
-        vapiSummary,
-        vapiAnalysis: vapiAnalysis as Record<string, unknown>,
-        vapiStructuredData: vapiStructuredData ?? null,
-      };
-
-      // Calculate speaker turns
-      const speakerTurns = normalizedMessages.length;
-
-      await prisma.callAnalytics.upsert({
-        where: { callId: call.id },
-        create: {
-          callId: call.id,
-          summary: vapiSummary ?? null,
-          speakerTurns,
-          customFields: customFields as unknown as Prisma.InputJsonValue,
-          processedAt: new Date(),
-        },
-        update: {
-          summary: vapiSummary ?? null,
-          speakerTurns,
-          customFields: customFields as unknown as Prisma.InputJsonValue,
-          processedAt: new Date(),
-          processingError: null,
-        },
-      });
-
-      // Set Call.outcome
-      await prisma.call.update({
-        where: { id: call.id },
-        data: { outcome },
-      });
-
-      console.log(`VAPI analytics processed for call ${call.id} - outcome: ${outcome}, success: ${vapiSuccessEval}`);
-
-      // Notify frontend immediately
-      wsService.emitCallAnalyticsReady(call.id);
-    } else {
-      // --- Fallback: no VAPI analysis available, use OpenAI ---
-      console.log(`No VAPI analysis for call ${call.id}, falling back to OpenAI`);
-      await analyticsService.queueAnalysis(call.id);
     }
+    if (!isSuccess && duration && duration < 15) {
+      outcome = 'NO_RESPONSE';
+      callResult = 'INCONCLUSIVE';
+    }
+
+    // Extract appointment details
+    let appointmentDetails: Record<string, unknown> | null = null;
+    if (sd?.appointmentBooked === true || sd?.appointmentBooked === 'true') {
+      appointmentDetails = {
+        scheduled: true,
+        date: sd.appointmentDate,
+        time: sd.appointmentTime,
+        type: sd.appointmentType,
+      };
+      outcome = 'SUCCESS';
+      callResult = 'PASS';
+    }
+
+    // Sentiment from structured data
+    const sentiment = sd?.sentiment as string | undefined;
+    const sentimentConfidence = sd?.sentimentConfidence as number | undefined;
+    const sentimentBreakdown = sd?.sentimentBreakdown as { positive: number; negative: number; neutral: number } | undefined;
+
+    // Map sentiment string to DB enum
+    const validSentiments = ['VERY_POSITIVE', 'POSITIVE', 'NEUTRAL', 'NEGATIVE', 'VERY_NEGATIVE'];
+    const overallSentiment = sentiment && validSentiments.includes(sentiment) ? sentiment : null;
+
+    // Use callSummary from structured data if VAPI summary is missing
+    const effectiveSummary = vapiSummary ?? (sd?.callSummary as string) ?? null;
+
+    const customFields = {
+      callResult,
+      callResultReason: (sd?.callResultReason as string) ?? effectiveSummary ?? '',
+      outcomeReason: (sd?.outcomeReason as string) ?? effectiveSummary ?? '',
+      interestLevel: sd?.interestLevel as string | undefined,
+      objections: (sd?.objections ?? []) as string[],
+      appointmentDetails,
+      actionItems: (sd?.actionItems ?? []) as string[],
+      nextSteps: (sd?.nextSteps ?? []) as string[],
+      extractedResponses: (sd?.extractedResponses ?? null) as Record<string, string> | null,
+      vapiSummary: effectiveSummary,
+      vapiAnalysis: vapiAnalysis as Record<string, unknown>,
+      vapiStructuredData: sd ?? null,
+    };
+
+    const speakerTurns = normalizedMessages.length;
+    const keyTopics = (sd?.keyTopics ?? []) as string[];
+
+    await prisma.callAnalytics.upsert({
+      where: { callId: call.id },
+      create: {
+        callId: call.id,
+        summary: effectiveSummary ?? null,
+        overallSentiment: overallSentiment as any,
+        sentimentConfidence: sentimentConfidence ?? null,
+        sentimentBreakdown: sentimentBreakdown as unknown as Prisma.InputJsonValue ?? Prisma.JsonNull,
+        extractedResponses: (sd?.extractedResponses as unknown as Prisma.InputJsonValue) ?? Prisma.JsonNull,
+        keyTopics,
+        speakerTurns,
+        customFields: customFields as unknown as Prisma.InputJsonValue,
+        processedAt: new Date(),
+      },
+      update: {
+        summary: effectiveSummary ?? null,
+        overallSentiment: overallSentiment as any,
+        sentimentConfidence: sentimentConfidence ?? null,
+        sentimentBreakdown: sentimentBreakdown as unknown as Prisma.InputJsonValue ?? Prisma.JsonNull,
+        extractedResponses: (sd?.extractedResponses as unknown as Prisma.InputJsonValue) ?? Prisma.JsonNull,
+        keyTopics,
+        speakerTurns,
+        customFields: customFields as unknown as Prisma.InputJsonValue,
+        processedAt: new Date(),
+        processingError: null,
+      },
+    });
+
+    await prisma.call.update({
+      where: { id: call.id },
+      data: { outcome },
+    });
+
+    console.log(`VAPI analytics processed for call ${call.id} - outcome: ${outcome}, sentiment: ${overallSentiment}, interest: ${sd?.interestLevel}`);
+
+    wsService.emitCallAnalyticsReady(call.id);
   }
 
   // Update campaign contact status

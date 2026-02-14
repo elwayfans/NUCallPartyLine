@@ -48,6 +48,7 @@ router.get('/', async (req, res, next) => {
       search: req.query.search as string | undefined,
       isActive: req.query.isActive === 'true' ? true : req.query.isActive === 'false' ? false : undefined,
       tags: req.query.tags ? (req.query.tags as string).split(',') : undefined,
+      importBatchId: req.query.importBatchId as string | undefined,
     };
 
     const result = await contactsService.findAll(filters, pagination);
@@ -100,6 +101,16 @@ router.get('/import/:id/status', async (req, res, next) => {
   }
 });
 
+// GET /api/contacts/import/batches - List import batches
+router.get('/import/batches', async (_req, res, next) => {
+  try {
+    const batches = await contactsService.listImportBatches();
+    successResponse(res, batches);
+  } catch (error) {
+    next(error);
+  }
+});
+
 // POST /api/contacts/import - Import contacts from CSV
 router.post('/import', upload.single('file'), async (req, res, next) => {
   try {
@@ -107,7 +118,8 @@ router.post('/import', upload.single('file'), async (req, res, next) => {
       return errorResponse(res, 'No file uploaded', 400);
     }
 
-    const result = await contactsService.importFromCsv(req.file.buffer);
+    const batchName = req.body.batchName as string | undefined;
+    const result = await contactsService.importFromCsv(req.file.buffer, batchName);
 
     successResponse(res, {
       importId: result.importId,

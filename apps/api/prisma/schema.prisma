@@ -28,12 +28,16 @@ model Contact {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
+  importBatchId  String?
+  importBatch    CsvImport? @relation(fields: [importBatchId], references: [id])
+
   campaignContacts CampaignContact[]
   calls            Call[]
 
   @@index([phoneNumber])
   @@index([lastName, firstName])
   @@index([isActive])
+  @@index([importBatchId])
 }
 
 // ============================================
@@ -292,6 +296,7 @@ enum SentimentScore {
 
 model CsvImport {
   id            String       @id @default(cuid())
+  name          String    @default("Imported Contacts")
   filename      String
   status        ImportStatus @default(PENDING)
   totalRows     Int          @default(0)
@@ -300,6 +305,8 @@ model CsvImport {
   errors        Json?
   createdAt     DateTime     @default(now())
   completedAt   DateTime?
+
+  contacts      Contact[]
 
   @@index([status])
   @@index([createdAt])

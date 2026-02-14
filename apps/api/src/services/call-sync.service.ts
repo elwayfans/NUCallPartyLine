@@ -1,4 +1,5 @@
-import type { Prisma, CallOutcome } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import type { CallOutcome } from '@prisma/client';
 import { prisma } from '../config/database.js';
 import { vapiService } from './vapi.service.js';
 import { callsService } from './calls.service.js';
@@ -119,22 +120,24 @@ export class CallSyncService {
     }
 
     // Process analytics from VAPI analysis
-    const vapiSummary = (artifact as Record<string, unknown>)?.summary as string | undefined
-      ?? analysis?.summary;
     const vapiSuccessEval = analysis?.successEvaluation;
-    const vapiStructuredData = analysis?.structuredData;
+    const sd = analysis?.structuredData;
+    const vapiSummary = analysis?.summary
+      ?? (sd?.callSummary as string | undefined)
+      ?? (artifact as Record<string, unknown>)?.summary as string | undefined;
 
     if (vapiSummary || vapiSuccessEval !== undefined) {
       const isSuccess = vapiSuccessEval === 'true';
-      let outcome: CallOutcome = isSuccess ? 'SUCCESS' : 'PARTIAL';
-      let callResult: 'PASS' | 'FAIL' | 'INCONCLUSIVE' = isSuccess ? 'PASS' : 'FAIL';
+      // Schema uses "callOutcome" (flat format), also check "outcome" for compatibility
+      let outcome: CallOutcome = (sd?.callOutcome as CallOutcome) ?? (sd?.outcome as CallOutcome) ??
+        (isSuccess ? 'SUCCESS' : 'PARTIAL');
+      let callResult: string = (sd?.callResult as string) ??
+        (isSuccess ? 'PASS' : 'FAIL');
 
       const endedReason = vapiCall.endedReason;
       if (!isSuccess && endedReason) {
         const reason = endedReason.toLowerCase();
-        if (reason.includes('no-answer') || reason.includes('voicemail')) {
-          outcome = 'NO_RESPONSE';
-        } else if (reason.includes('busy')) {
+        if (reason.includes('no-answer') || reason.includes('voicemail') || reason.includes('busy')) {
           outcome = 'NO_RESPONSE';
         } else if (reason.includes('error') || reason.includes('failed')) {
           outcome = 'TECHNICAL_FAILURE';
@@ -147,37 +150,41 @@ export class CallSyncService {
 
       // Extract appointment details
       let appointmentDetails: Record<string, unknown> | null = null;
-      if (vapiStructuredData) {
-        const apptBooked = vapiStructuredData.appointmentBooked
-          ?? vapiStructuredData.appointment_booked
-          ?? vapiStructuredData.booked;
-        if (apptBooked === true || apptBooked === 'true' || apptBooked === 'yes') {
-          appointmentDetails = {
-            scheduled: true,
-            date: vapiStructuredData.appointmentDate ?? vapiStructuredData.date,
-            time: vapiStructuredData.appointmentTime ?? vapiStructuredData.time,
-            location: vapiStructuredData.location,
-            type: vapiStructuredData.appointmentType ?? vapiStructuredData.type,
-            notes: vapiStructuredData.notes,
-          };
-          outcome = 'SUCCESS';
-          callResult = 'PASS';
-        }
+      if (sd?.appointmentBooked === true || sd?.appointmentBooked === 'true') {
+        appointmentDetails = {
+          scheduled: true,
+          date: sd.appointmentDate,
+          time: sd.appointmentTime,
+          type: sd.appointmentType,
+        };
+        outcome = 'SUCCESS';
+        callResult = 'PASS';
       }
+
+      // Sentiment from structured data
+      const sentiment = sd?.sentiment as string | undefined;
+      const sentimentConfidence = sd?.sentimentConfidence as number | undefined;
+      const sentimentBreakdown = sd?.sentimentBreakdown as { positive: number; negative: number; neutral: number } | undefined;
+      const validSentiments = ['VERY_POSITIVE', 'POSITIVE', 'NEUTRAL', 'NEGATIVE', 'VERY_NEGATIVE'];
+      const overallSentiment = sentiment && validSentiments.includes(sentiment) ? sentiment : null;
 
       const rawMessages = (artifact?.messages ?? []) as Array<Record<string, unknown>>;
       const speakerTurns = rawMessages.filter((m) => m.role !== 'system').length;
+      const keyTopics = (sd?.keyTopics ?? []) as string[];
 
       const customFields = {
         callResult,
-        callResultReason: vapiSummary ?? '',
-        outcomeReason: vapiSummary ?? '',
+        callResultReason: (sd?.callResultReason as string) ?? vapiSummary ?? '',
+        outcomeReason: (sd?.outcomeReason as string) ?? vapiSummary ?? '',
+        interestLevel: sd?.interestLevel as string | undefined,
+        objections: (sd?.objections ?? []) as string[],
         appointmentDetails,
-        actionItems: [] as string[],
-        nextSteps: [] as string[],
+        actionItems: (sd?.actionItems ?? []) as string[],
+        nextSteps: (sd?.nextSteps ?? []) as string[],
+        extractedResponses: (sd?.extractedResponses ?? null) as Record<string, string> | null,
         vapiSummary,
         vapiAnalysis: analysis as Record<string, unknown>,
-        vapiStructuredData: vapiStructuredData ?? null,
+        vapiStructuredData: sd ?? null,
         syncedFromVapi: true,
       };
 
@@ -186,12 +193,22 @@ export class CallSyncService {
         create: {
           callId,
           summary: vapiSummary ?? null,
+          overallSentiment: overallSentiment as any,
+          sentimentConfidence: sentimentConfidence ?? null,
+          sentimentBreakdown: sentimentBreakdown as unknown as Prisma.InputJsonValue ?? Prisma.JsonNull,
+          extractedResponses: (sd?.extractedResponses as unknown as Prisma.InputJsonValue) ?? Prisma.JsonNull,
+          keyTopics,
           speakerTurns,
           customFields: customFields as unknown as Prisma.InputJsonValue,
           processedAt: new Date(),
         },
         update: {
           summary: vapiSummary ?? null,
+          overallSentiment: overallSentiment as any,
+          sentimentConfidence: sentimentConfidence ?? null,
+          sentimentBreakdown: sentimentBreakdown as unknown as Prisma.InputJsonValue ?? Prisma.JsonNull,
+          extractedResponses: (sd?.extractedResponses as unknown as Prisma.InputJsonValue) ?? Prisma.JsonNull,
+          keyTopics,
           speakerTurns,
           customFields: customFields as unknown as Prisma.InputJsonValue,
           processedAt: new Date(),

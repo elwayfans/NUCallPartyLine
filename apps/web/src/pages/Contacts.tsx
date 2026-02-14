@@ -13,24 +13,37 @@ import { useStore } from '../store';
 export function Contacts() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [batchFilter, setBatchFilter] = useState('');
   const [showImportModal, setShowImportModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
+  const [deletingContact, setDeletingContact] = useState<Contact | null>(null);
   const queryClient = useQueryClient();
 
   const { selectedContactIds, toggleContactSelection, selectContacts, clearContactSelection } =
     useStore();
 
+  const { data: batchesData } = useQuery({
+    queryKey: ['importBatches'],
+    queryFn: () => contactsApi.listImportBatches(),
+  });
+
+  const batches = batchesData?.data?.data ?? [];
+
   const { data, isLoading } = useQuery({
-    queryKey: ['contacts', { page, search }],
-    queryFn: () => contactsApi.list({ page, pageSize: 20, search: search || undefined }),
+    queryKey: ['contacts', { page, search, batchFilter }],
+    queryFn: () => contactsApi.list({ page, pageSize: 20, search: search || undefined, importBatchId: batchFilter || undefined }),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => contactsApi.delete(id),
     onSuccess: () => {
       toast.success('Contact deleted');
+      setDeletingContact(null);
       queryClient.invalidateQueries({ queryKey: ['contacts'] });
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to delete contact');
     },
   });
 
@@ -108,6 +121,18 @@ export function Contacts() {
             className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-4 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
           />
         </div>
+        {batches.length > 0 && (
+          <select
+            value={batchFilter}
+            onChange={(e) => { setBatchFilter(e.target.value); setPage(1); }}
+            className="rounded-lg border border-gray-300 py-2 px-3 text-sm text-gray-700 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+          >
+            <option value="">All batches</option>
+            {batches.map((b) => (
+              <option key={b.id} value={b.id}>{b.name} ({b.successCount})</option>
+            ))}
+          </select>
+        )}
         {selectedContactIds.size > 0 && (
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-600">
@@ -207,11 +232,7 @@ export function Contacts() {
                         <Edit2 className="h-4 w-4" />
                       </button>
                       <button
-                        onClick={() => {
-                          if (confirm('Are you sure you want to delete this contact?')) {
-                            deleteMutation.mutate(contact.id);
-                          }
-                        }}
+                        onClick={() => setDeletingContact(contact)}
                         className="text-gray-400 hover:text-red-600"
                         title="Delete contact"
                       >
@@ -291,6 +312,37 @@ export function Contacts() {
             onSuccess={() => setEditingContact(null)}
             onCancel={() => setEditingContact(null)}
           />
+        )}
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        isOpen={!!deletingContact}
+        onClose={() => setDeletingContact(null)}
+        title="Delete Contact"
+      >
+        {deletingContact && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              Are you sure you want to delete{' '}
+              <span className="font-semibold text-gray-900">
+                {deletingContact.firstName} {deletingContact.lastName}
+              </span>
+              ? This action cannot be undone.
+            </p>
+            <div className="flex justify-end gap-3">
+              <Button variant="secondary" onClick={() => setDeletingContact(null)}>
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                onClick={() => deleteMutation.mutate(deletingContact.id)}
+                isLoading={deleteMutation.isPending}
+              >
+                Delete
+              </Button>
+            </div>
+          </div>
         )}
       </Modal>
     </div>

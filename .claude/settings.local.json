@@ -13,7 +13,8 @@
       "Bash(npx vite build:*)",
       "Bash(npx ts-node:*)",
       "Bash(npx tsx:*)",
-      "Bash(ls \"c:\\\\Aaron BB Repos\\\\NUCallPartyLine\\\\NUCallPartyLine_repo\\\\node_modules\\\\@vapi-ai\\\\server-sdk\\\\api\\\\types\"\" | grep -i \"artifac|record \")"
+      "Bash(ls \"c:\\\\Aaron BB Repos\\\\NUCallPartyLine\\\\NUCallPartyLine_repo\\\\node_modules\\\\@vapi-ai\\\\server-sdk\\\\api\\\\types\"\" | grep -i \"artifac|record \")",
+      "Bash(npx dotenv:*)"
     ]
   }
 }

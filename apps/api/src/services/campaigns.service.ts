@@ -61,6 +61,7 @@ export class CampaignsService {
     return prisma.campaign.findUnique({
       where: { id },
       include: {
+        assistant: { select: { id: true, name: true } },
         campaignContacts: {
           include: {
             contact: true,
@@ -113,6 +114,7 @@ export class CampaignsService {
     data: Partial<{
       name: string;
       description: string | null;
+      assistantId: string;
       vapiAssistantId: string;
       vapiPhoneNumberId: string | null;
       maxConcurrentCalls: number;
@@ -371,6 +373,47 @@ export class CampaignsService {
         callStatusCounts.map((s) => [s.status, s._count])
       ),
     };
+  }
+
+  async reset(id: string) {
+    const campaign = await prisma.campaign.findUnique({ where: { id } });
+    if (!campaign) {
+      throw new Error('Campaign not found');
+    }
+    if (campaign.status === 'DRAFT') {
+      throw new Error('Campaign is already in DRAFT status');
+    }
+
+    // Delete call analytics and transcripts for this campaign's calls
+    const callIds = await prisma.call.findMany({
+      where: { campaignId: id },
+      select: { id: true },
+    });
+    const ids = callIds.map((c) => c.id);
+
+    if (ids.length > 0) {
+      await prisma.callAnalytics.deleteMany({ where: { callId: { in: ids } } });
+      await prisma.transcript.deleteMany({ where: { callId: { in: ids } } });
+      await prisma.call.deleteMany({ where: { campaignId: id } });
+    }
+
+    // Reset all campaign contacts to PENDING
+    await prisma.campaignContact.updateMany({
+      where: { campaignId: id },
+      data: { status: 'PENDING', attempts: 0, lastAttemptAt: null },
+    });
+
+    // Reset campaign counters and status
+    return prisma.campaign.update({
+      where: { id },
+      data: {
+        status: 'DRAFT',
+        completedCalls: 0,
+        failedCalls: 0,
+        startedAt: null,
+        completedAt: null,
+      },
+    });
   }
 
   async getStats() {

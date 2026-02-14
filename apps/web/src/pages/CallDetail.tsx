@@ -1,9 +1,11 @@
+import { useState, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Clock, DollarSign, Calendar, CheckCircle, ArrowRight } from 'lucide-react';
+import { ArrowLeft, Clock, DollarSign, Calendar, CheckCircle, ArrowRight, Code, Copy, Check } from 'lucide-react';
 import { format } from 'date-fns';
 import { callsApi, type CallAnalytics } from '../services/api';
 import { Button } from '../components/common/Button';
+import { Modal } from '../components/common/Modal';
 import { CallStatusBadge, SentimentBadge, OutcomeBadge, CallResultBadge } from '../components/common/Badge';
 import { useWebSocket } from '../hooks/useWebSocket';
 
@@ -50,6 +52,11 @@ export function CallDetail() {
     enabled: !!id,
   });
 
+  const [inspectOpen, setInspectOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [playbackRate, setPlaybackRate] = useState(1);
+  const audioRef = useRef<HTMLAudioElement>(null);
+
   const call = callData?.data?.data;
   const transcript = transcriptData?.data?.data;
   const analytics = analyticsData?.data?.data as CallAnalytics | undefined;
@@ -86,18 +93,26 @@ export function CallDetail() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <Link to="/calls">
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-        </Link>
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Call Details</h1>
-          <p className="text-sm text-gray-500">
-            {call.contact?.firstName} {call.contact?.lastName} - {call.phoneNumber}
-          </p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Link to="/calls">
+            <Button variant="ghost" size="sm">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          </Link>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Call Details</h1>
+            <p className="text-sm text-gray-500">
+              {call.contact?.firstName} {call.contact?.lastName} - {call.phoneNumber}
+            </p>
+          </div>
         </div>
+        {analytics && (
+          <Button variant="secondary" size="sm" onClick={() => setInspectOpen(true)}>
+            <Code className="h-4 w-4 mr-1.5" />
+            Inspect Results
+          </Button>
+        )}
       </div>
 
       {/* Main layout: content left, transcript sidebar right */}
@@ -204,23 +219,44 @@ export function CallDetail() {
           {/* Call Summary */}
           {(analytics?.summary || call.outcome) && (
             <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-2">
-                    <h2 className="text-base font-semibold text-gray-900">Call Summary</h2>
-                    {call.outcome && <OutcomeBadge outcome={call.outcome} />}
-                    {customFields?.callResult && <CallResultBadge result={customFields.callResult} />}
-                  </div>
-                  {analytics?.summary && (
-                    <p className="text-sm text-gray-700 leading-relaxed">{analytics.summary}</p>
-                  )}
-                  {customFields?.outcomeReason && (
-                    <p className="mt-2 text-sm text-gray-700 leading-relaxed"><span className="font-semibold">Outcome:</span> {customFields.outcomeReason}</p>
-                  )}
-                  {customFields?.callResultReason && (
-                    <p className="mt-1 text-sm text-gray-700 leading-relaxed"><span className="font-semibold">Result:</span> {customFields.callResultReason}</p>
-                  )}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-2">
+                  <h2 className="text-base font-semibold text-gray-900">Call Summary</h2>
+                  {call.outcome && <OutcomeBadge outcome={call.outcome} />}
+                  {customFields?.callResult && <CallResultBadge result={customFields.callResult} />}
                 </div>
+                {analytics?.summary && (
+                  <p className="text-sm text-gray-700 leading-relaxed">{analytics.summary}</p>
+                )}
+                {customFields?.outcomeReason && customFields.outcomeReason !== analytics?.summary && (
+                  <p className="mt-2 text-sm text-gray-700 leading-relaxed">
+                    <span className="font-semibold">Outcome:</span> {customFields.outcomeReason}
+                  </p>
+                )}
+                {customFields?.callResultReason && customFields.callResultReason !== analytics?.summary && customFields.callResultReason !== customFields?.outcomeReason && (
+                  <p className="mt-1 text-sm text-gray-700 leading-relaxed">
+                    <span className="font-semibold">Result:</span> {customFields.callResultReason}
+                  </p>
+                )}
+                {customFields?.interestLevel && (
+                  <p className="mt-2 text-sm text-gray-700 leading-relaxed">
+                    <span className="font-semibold">Interest Level:</span>{' '}
+                    <span className="capitalize">{customFields.interestLevel}</span>
+                  </p>
+                )}
+                {customFields?.objections && customFields.objections.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-sm font-semibold text-gray-700">Objections:</p>
+                    <ul className="mt-1 space-y-0.5">
+                      {customFields.objections.map((obj, i) => (
+                        <li key={i} className="flex items-start gap-1.5 text-sm text-gray-600">
+                          <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
+                          {obj}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -392,18 +428,34 @@ export function CallDetail() {
               <h2 className="text-base font-semibold text-gray-900">Transcript</h2>
             </div>
             {transcript?.recordingUrl && (
-              <div className="border-b border-gray-200 px-5 py-3">
-                <audio controls className="w-full h-8">
+              <div className="border-b border-gray-200 px-5 py-3 space-y-2">
+                <audio
+                  ref={audioRef}
+                  controls
+                  className="w-full h-8"
+                  onRateChange={(e) => setPlaybackRate(e.currentTarget.playbackRate)}
+                >
                   <source src={transcript.recordingUrl} />
-                  <a
-                    href={transcript.recordingUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm text-primary-600 hover:underline"
-                  >
-                    Download Recording
-                  </a>
                 </audio>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-medium text-gray-500 mr-1">Speed</span>
+                  {[0.5, 1, 1.25, 1.5, 2].map((rate) => (
+                    <button
+                      key={rate}
+                      onClick={() => {
+                        if (audioRef.current) audioRef.current.playbackRate = rate;
+                        setPlaybackRate(rate);
+                      }}
+                      className={`px-1.5 py-0.5 text-[11px] rounded font-medium transition-colors ${
+                        playbackRate === rate
+                          ? 'bg-primary-100 text-primary-700'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      {rate}x
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
             <div className="flex-1 overflow-y-auto p-4">
@@ -448,6 +500,34 @@ export function CallDetail() {
           </div>
         </div>
       </div>
+
+      {/* Inspect Results Modal */}
+      <Modal isOpen={inspectOpen} onClose={() => setInspectOpen(false)} title="Call Results Data" size="lg">
+        <div className="space-y-3">
+          <div className="flex justify-end">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                const json = JSON.stringify(customFields ?? {}, null, 2);
+                navigator.clipboard.writeText(json).then(() => {
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                });
+              }}
+            >
+              {copied ? (
+                <><Check className="h-4 w-4 mr-1.5 text-green-600" /> Copied</>
+              ) : (
+                <><Copy className="h-4 w-4 mr-1.5" /> Copy JSON</>
+              )}
+            </Button>
+          </div>
+          <pre className="max-h-[60vh] overflow-auto rounded-lg bg-gray-900 p-4 text-sm text-gray-100 font-mono">
+            {JSON.stringify(customFields ?? {}, null, 2)}
+          </pre>
+        </div>
+      </Modal>
     </div>
   );
 }

@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Play, Pause, XCircle, Users, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Play, Pause, XCircle, Users, Plus, Trash2, RotateCcw } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { campaignsApi, contactsApi, callsApi } from '../services/api';
+import { api, campaignsApi, contactsApi, callsApi } from '../services/api';
 import { Button } from '../components/common/Button';
 import { Modal } from '../components/common/Modal';
 import { CampaignStatusBadge, Badge } from '../components/common/Badge';
@@ -54,11 +54,59 @@ export function CampaignDetail() {
     },
   });
 
+  const resetMutation = useMutation({
+    mutationFn: () => campaignsApi.reset(id!),
+    onSuccess: () => {
+      toast.success('Campaign reset to draft');
+      queryClient.invalidateQueries({ queryKey: ['campaign', id] });
+      queryClient.invalidateQueries({ queryKey: ['campaigns'] });
+      queryClient.invalidateQueries({ queryKey: ['calls', { campaignId: id }] });
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to reset campaign');
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: () => campaignsApi.delete(id!),
     onSuccess: () => {
       toast.success('Campaign deleted');
       navigate('/campaigns');
+    },
+  });
+
+  const campaign = campaignData?.data?.data;
+  const isDraft = campaign?.status === 'DRAFT';
+
+  const { data: assistantsData } = useQuery({
+    queryKey: ['assistants'],
+    queryFn: () => api.get('/assistants'),
+    enabled: isDraft,
+  });
+
+  const assistants: Array<{ id: string; name: string }> = assistantsData?.data?.data ?? [];
+
+  const updateAssistantMutation = useMutation({
+    mutationFn: (assistantId: string) => campaignsApi.update(id!, { assistantId } as any),
+    onSuccess: () => {
+      toast.success('Assistant updated');
+      queryClient.invalidateQueries({ queryKey: ['campaign', id] });
+      queryClient.invalidateQueries({ queryKey: ['campaigns'] });
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to update assistant');
+    },
+  });
+
+  const removeContactsMutation = useMutation({
+    mutationFn: (contactIds: string[]) => campaignsApi.removeContacts(id!, contactIds),
+    onSuccess: () => {
+      toast.success('Contact removed');
+      queryClient.invalidateQueries({ queryKey: ['campaign', id] });
+      queryClient.invalidateQueries({ queryKey: ['campaigns'] });
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to remove contact');
     },
   });
 
@@ -70,7 +118,6 @@ export function CampaignDetail() {
     );
   }
 
-  const campaign = campaignData?.data?.data;
   const calls = callsData?.data?.data ?? [];
 
   if (!campaign) {
@@ -106,6 +153,27 @@ export function CampaignDetail() {
           {campaign.description && (
             <p className="mt-1 text-gray-500">{campaign.description}</p>
           )}
+          <div className="mt-1 flex items-center gap-2 text-sm">
+            <span className="text-gray-500">Assistant:</span>
+            {isDraft ? (
+              <select
+                value={campaign.assistantId ?? ''}
+                onChange={(e) => {
+                  if (e.target.value) updateAssistantMutation.mutate(e.target.value);
+                }}
+                className="rounded border border-gray-300 px-2 py-0.5 text-sm text-gray-700 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              >
+                {!campaign.assistantId && <option value="">Not set</option>}
+                {assistants.map((a) => (
+                  <option key={a.id} value={a.id}>{a.name}</option>
+                ))}
+              </select>
+            ) : (
+              <span className="font-medium text-gray-700">
+                {campaign.assistant?.name ?? 'Not set'}
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-2">
           {campaign.status === 'DRAFT' && (
@@ -156,6 +224,20 @@ export function CampaignDetail() {
               <XCircle className="h-4 w-4" />
             </Button>
           )}
+          {campaign.status !== 'DRAFT' && (
+            <Button
+              variant="secondary"
+              leftIcon={<RotateCcw className="h-4 w-4" />}
+              onClick={() => {
+                if (confirm('Reset this campaign to draft? This will delete all call records and reset contacts to pending.')) {
+                  resetMutation.mutate();
+                }
+              }}
+              isLoading={resetMutation.isPending}
+            >
+              Reset
+            </Button>
+          )}
           {['DRAFT', 'COMPLETED', 'CANCELLED'].includes(campaign.status) && (
             <Button
               variant="ghost"
@@ -204,6 +286,70 @@ export function CampaignDetail() {
               style={{ width: `${progress}%` }}
             />
           </div>
+        </div>
+      )}
+
+      {/* Contacts */}
+      {campaign.campaignContacts && campaign.campaignContacts.length > 0 && (
+        <div className="rounded-lg border border-gray-200 bg-white shadow">
+          <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
+            <h2 className="font-semibold text-gray-900">
+              Contacts ({campaign.campaignContacts.length})
+            </h2>
+            {isDraft && (
+              <Button
+                variant="secondary"
+                size="sm"
+                leftIcon={<Users className="h-4 w-4" />}
+                onClick={() => setShowAddContactsModal(true)}
+              >
+                Add More
+              </Button>
+            )}
+          </div>
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Name</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Phone</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Email</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Status</th>
+                {isDraft && (
+                  <th className="px-4 py-3 text-right text-sm font-semibold text-gray-900">Actions</th>
+                )}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {campaign.campaignContacts.map((cc: any) => (
+                <tr key={cc.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                    {cc.contact.firstName} {cc.contact.lastName}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-500">{cc.contact.phoneNumber}</td>
+                  <td className="px-4 py-3 text-sm text-gray-500">{cc.contact.email ?? '-'}</td>
+                  <td className="px-4 py-3">
+                    <Badge variant={
+                      cc.status === 'COMPLETED' ? 'success' :
+                      cc.status === 'FAILED' ? 'error' :
+                      cc.status === 'IN_PROGRESS' ? 'warning' : 'default'
+                    }>
+                      {cc.status}
+                    </Badge>
+                  </td>
+                  {isDraft && (
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        onClick={() => removeContactsMutation.mutate([cc.contact.id])}
+                        className="text-sm text-red-500 hover:text-red-700"
+                      >
+                        Remove
+                      </button>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
@@ -290,12 +436,21 @@ function AddContactsModal({
   campaignId: string;
 }) {
   const [search, setSearch] = useState('');
+  const [batchFilter, setBatchFilter] = useState('');
   const queryClient = useQueryClient();
   const { selectedContactIds, toggleContactSelection, clearContactSelection } = useStore();
 
+  const { data: batchesData } = useQuery({
+    queryKey: ['importBatches'],
+    queryFn: () => contactsApi.listImportBatches(),
+    enabled: isOpen,
+  });
+
+  const batches: Array<{ id: string; name: string; successCount: number }> = batchesData?.data?.data ?? [];
+
   const { data: contactsData, isLoading } = useQuery({
-    queryKey: ['contacts', { search, pageSize: 100 }],
-    queryFn: () => contactsApi.list({ pageSize: 100, search: search || undefined }),
+    queryKey: ['contacts', { search, batchFilter, pageSize: 100 }],
+    queryFn: () => contactsApi.list({ pageSize: 100, search: search || undefined, importBatchId: batchFilter || undefined }),
     enabled: isOpen,
   });
 
@@ -326,13 +481,27 @@ function AddContactsModal({
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Add Contacts to Campaign" size="lg">
       <div className="space-y-4">
-        <input
-          type="text"
-          placeholder="Search contacts..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-        />
+        <div className="flex gap-2">
+          <input
+            type="text"
+            placeholder="Search contacts..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="flex-1 rounded-lg border border-gray-300 px-3 py-2 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+          />
+          {batches.length > 0 && (
+            <select
+              value={batchFilter}
+              onChange={(e) => setBatchFilter(e.target.value)}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            >
+              <option value="">All batches</option>
+              {batches.map((b) => (
+                <option key={b.id} value={b.id}>{b.name} ({b.successCount})</option>
+              ))}
+            </select>
+          )}
+        </div>
 
         <div className="max-h-96 overflow-y-auto">
           {isLoading ? (

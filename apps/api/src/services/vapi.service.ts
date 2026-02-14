@@ -1,14 +1,48 @@
 import { VapiClient } from '@vapi-ai/server-sdk';
 import { prisma } from '../config/database.js';
 import { env } from '../config/env.js';
+import { getAnalysisPlan } from './assistants.service.js';
 
 export class VapiService {
   private client: VapiClient;
+  private resolvedPhoneNumberId: string | null = null;
 
   constructor() {
     this.client = new VapiClient({
       token: env.VAPI_API_KEY,
     });
+  }
+
+  /**
+   * Resolve VAPI_PHONE_NUMBER_ID to a UUID.
+   * If it's already a UUID, return it. Otherwise look it up from VAPI's phone number list.
+   * Result is cached for the lifetime of the service instance.
+   */
+  async resolvePhoneNumberId(rawId?: string): Promise<string> {
+    if (this.resolvedPhoneNumberId) return this.resolvedPhoneNumberId;
+
+    const id = rawId ?? env.VAPI_PHONE_NUMBER_ID;
+    if (id && /^[0-9a-f-]{36}$/i.test(id)) {
+      this.resolvedPhoneNumberId = id;
+      return id;
+    }
+
+    // Not a UUID — look up from VAPI
+    const phoneNumbers = await this.listPhoneNumbers();
+    if (id) {
+      const normalized = id.startsWith('+') ? id : `+${id.replace(/\D/g, '')}`;
+      const match = phoneNumbers.find(pn => pn.number === normalized);
+      if (match) {
+        this.resolvedPhoneNumberId = match.id;
+        return match.id;
+      }
+    }
+    if (phoneNumbers.length > 0) {
+      this.resolvedPhoneNumberId = phoneNumbers[0].id;
+      return phoneNumbers[0].id;
+    }
+
+    throw new Error('No phone numbers found in your VAPI account. Add one at dashboard.vapi.ai.');
   }
 
   /**
@@ -36,10 +70,11 @@ export class VapiService {
 
     try {
       // Make VAPI API call
+      const resolvedPhoneId = await this.resolvePhoneNumberId(params.phoneNumberId);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const createParams: Record<string, any> = {
         assistantId: params.assistantId,
-        phoneNumberId: params.phoneNumberId ?? env.VAPI_PHONE_NUMBER_ID,
+        phoneNumberId: resolvedPhoneId,
         customer: {
           number: params.phoneNumber,
         },
@@ -49,12 +84,11 @@ export class VapiService {
           ...params.metadata,
         },
       };
-      // Tell VAPI where to send webhooks (serverUrl lives on the assistant object)
-      if (env.SERVER_URL) {
-        createParams.assistantOverrides = {
-          serverUrl: `${env.SERVER_URL}/api/webhooks/vapi`,
-        };
-      }
+      // Tell VAPI where to send webhooks + include analysisPlan for structured data extraction
+      createParams.assistantOverrides = {
+        ...(env.SERVER_URL ? { serverUrl: `${env.SERVER_URL}/api/webhooks/vapi` } : {}),
+        analysisPlan: getAnalysisPlan(),
+      };
       const vapiCall = await this.client.calls.create(createParams as any);
 
       // Update with VAPI call ID
@@ -175,10 +209,11 @@ export class VapiService {
       if (env.SERVER_URL) {
         assistantWithServer.serverUrl = `${env.SERVER_URL}/api/webhooks/vapi`;
       }
+      const resolvedPhoneId = await this.resolvePhoneNumberId(params.phoneNumberId);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const createParams: Record<string, any> = {
         assistant: assistantWithServer,
-        phoneNumberId: params.phoneNumberId ?? env.VAPI_PHONE_NUMBER_ID,
+        phoneNumberId: resolvedPhoneId,
         customer: {
           number: params.phoneNumber,
         },

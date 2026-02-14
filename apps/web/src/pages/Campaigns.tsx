@@ -380,12 +380,21 @@ function AddContactsModal({
   campaignId: string | null;
 }) {
   const [search, setSearch] = useState('');
+  const [batchFilter, setBatchFilter] = useState('');
   const queryClient = useQueryClient();
   const { selectedContactIds, toggleContactSelection, clearContactSelection } = useStore();
 
+  const { data: batchesData } = useQuery({
+    queryKey: ['importBatches'],
+    queryFn: () => contactsApi.listImportBatches(),
+    enabled: isOpen,
+  });
+
+  const batches: Array<{ id: string; name: string; successCount: number }> = batchesData?.data?.data ?? [];
+
   const { data: contactsData, isLoading } = useQuery({
-    queryKey: ['contacts', { search, pageSize: 100 }],
-    queryFn: () => contactsApi.list({ pageSize: 100, search: search || undefined }),
+    queryKey: ['contacts', { search, batchFilter, pageSize: 100 }],
+    queryFn: () => contactsApi.list({ pageSize: 100, search: search || undefined, importBatchId: batchFilter || undefined }),
     enabled: isOpen,
   });
 
@@ -416,13 +425,27 @@ function AddContactsModal({
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Add Contacts to Campaign" size="lg">
       <div className="space-y-4">
-        <input
-          type="text"
-          placeholder="Search contacts..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-        />
+        <div className="flex gap-2">
+          <input
+            type="text"
+            placeholder="Search contacts..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="flex-1 rounded-lg border border-gray-300 px-3 py-2 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+          />
+          {batches.length > 0 && (
+            <select
+              value={batchFilter}
+              onChange={(e) => setBatchFilter(e.target.value)}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            >
+              <option value="">All batches</option>
+              {batches.map((b) => (
+                <option key={b.id} value={b.id}>{b.name} ({b.successCount})</option>
+              ))}
+            </select>
+          )}
+        </div>
 
         <div className="max-h-96 overflow-y-auto">
           {isLoading ? (

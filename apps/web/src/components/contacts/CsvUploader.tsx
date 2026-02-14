@@ -12,16 +12,18 @@ interface CsvUploaderProps {
 
 export function CsvUploader({ onSuccess }: CsvUploaderProps) {
   const [file, setFile] = useState<File | null>(null);
+  const [batchName, setBatchName] = useState(() => `Import ${new Date().toLocaleString()}`);
   const queryClient = useQueryClient();
 
   const importMutation = useMutation({
-    mutationFn: (file: File) => contactsApi.import(file),
+    mutationFn: (file: File) => contactsApi.import(file, batchName),
     onSuccess: (response) => {
-      const result = response.data;
+      const result = response.data.data;
       toast.success(
         `Imported ${result.created} new contacts, updated ${result.updated} existing`
       );
       queryClient.invalidateQueries({ queryKey: ['contacts'] });
+      queryClient.invalidateQueries({ queryKey: ['importBatches'] });
       setFile(null);
       onSuccess?.();
     },
@@ -88,6 +90,22 @@ export function CsvUploader({ onSuccess }: CsvUploaderProps) {
         <p className="mt-2 text-xs text-gray-500">Maximum file size: 10MB</p>
       </div>
 
+      {/* Batch name */}
+      {file && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Batch Name
+          </label>
+          <input
+            type="text"
+            value={batchName}
+            onChange={(e) => setBatchName(e.target.value)}
+            placeholder="e.g., Spring 2026 Prospects"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+          />
+        </div>
+      )}
+
       {/* Selected file */}
       {file && (
         <div className="flex items-center justify-between rounded-lg bg-gray-50 p-4">
@@ -128,11 +146,11 @@ export function CsvUploader({ onSuccess }: CsvUploaderProps) {
             <span className="font-medium text-green-800">Import successful!</span>
           </div>
           <div className="mt-2 text-sm text-green-700">
-            <p>Created: {importMutation.data?.data?.created ?? 0} contacts</p>
-            <p>Updated: {importMutation.data?.data?.updated ?? 0} contacts</p>
-            {(importMutation.data?.data?.errors?.length ?? 0) > 0 && (
+            <p>Created: {importMutation.data?.data?.data?.created ?? 0} contacts</p>
+            <p>Updated: {importMutation.data?.data?.data?.updated ?? 0} contacts</p>
+            {(importMutation.data?.data?.data?.errors?.length ?? 0) > 0 && (
               <p className="mt-1 text-yellow-700">
-                Errors: {importMutation.data?.data?.errors?.length} rows skipped
+                Errors: {importMutation.data?.data?.data?.errors?.length} rows skipped
               </p>
             )}
           </div>

@@ -187,8 +187,128 @@ class AssistantsService {
       },
       firstMessage,
       firstMessageMode: assistant.firstSpeaker === 'ASSISTANT' ? 'assistant-speaks-first' : 'assistant-waits-for-user',
+      serverMessages: ['end-of-call-report', 'status-update'],
+      analysisPlan: getAnalysisPlan(),
     };
   }
 }
 
 export const assistantsService = new AssistantsService();
+
+/**
+ * Build the VAPI analysisPlan so VAPI extracts all structured data from every call.
+ * Uses the flat format (structuredDataSchema, summaryPrompt, successEvaluationPrompt)
+ * which is the format VAPI's API actually processes — NOT the nested SDK type format.
+ */
+export function getAnalysisPlan() {
+  return {
+    structuredDataSchema: {
+      type: 'object',
+      properties: {
+        callSummary: {
+          type: 'string',
+          description: 'A brief summary of the call conversation',
+        },
+        callOutcome: {
+          type: 'string',
+          enum: ['SUCCESS', 'PARTIAL', 'NO_RESPONSE', 'CALLBACK_REQUESTED', 'WRONG_NUMBER', 'DECLINED', 'TECHNICAL_FAILURE'],
+          description: 'Overall call outcome category',
+        },
+        outcomeReason: {
+          type: 'string',
+          description: 'Brief explanation of why this outcome was determined (1-2 sentences)',
+        },
+        callResult: {
+          type: 'string',
+          enum: ['PASS', 'FAIL', 'INCONCLUSIVE'],
+          description: 'Whether the call achieved its primary objective',
+        },
+        callResultReason: {
+          type: 'string',
+          description: 'Brief explanation of the pass/fail determination',
+        },
+        sentiment: {
+          type: 'string',
+          enum: ['VERY_POSITIVE', 'POSITIVE', 'NEUTRAL', 'NEGATIVE', 'VERY_NEGATIVE'],
+          description: 'Overall sentiment of the contact during the call',
+        },
+        sentimentConfidence: {
+          type: 'number',
+          description: 'Confidence in sentiment assessment from 0.0 to 1.0',
+        },
+        sentimentBreakdown: {
+          type: 'object',
+          description: 'Percentage breakdown of sentiment (must sum to 100)',
+          properties: {
+            positive: { type: 'number' },
+            negative: { type: 'number' },
+            neutral: { type: 'number' },
+          },
+        },
+        interestLevel: {
+          type: 'string',
+          enum: ['high', 'medium', 'low', 'none'],
+          description: 'The contact\'s overall level of interest based on their responses and engagement',
+        },
+        appointmentBooked: {
+          type: 'boolean',
+          description: 'Whether an appointment, visit, tour, or meeting was explicitly scheduled',
+        },
+        appointmentDate: {
+          type: 'string',
+          description: 'Date of the scheduled appointment if booked (e.g. "2025-03-15" or "next Tuesday")',
+        },
+        appointmentTime: {
+          type: 'string',
+          description: 'Time of the scheduled appointment if booked (e.g. "2:00 PM")',
+        },
+        appointmentType: {
+          type: 'string',
+          description: 'Type of appointment (campus tour, interview, information session, orientation, etc.)',
+        },
+        keyTopics: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Main topics discussed during the call (3-8 items)',
+        },
+        extractedResponses: {
+          type: 'object',
+          description: 'Key question/answer pairs from the conversation',
+        },
+        objections: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Specific objections or concerns raised by the contact',
+        },
+        actionItems: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Action items that need follow-up after the call',
+        },
+        nextSteps: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Next steps agreed upon during the call',
+        },
+      },
+    },
+    successEvaluationPrompt: [
+      'Evaluate whether this call achieved its goal.',
+      'A call is successful if the contact engaged meaningfully AND one of:',
+      '- An appointment/tour/visit was scheduled',
+      '- The contact expressed clear interest in next steps',
+      '- Key information was successfully communicated and received positively',
+      'A call is NOT successful if: contact was unreachable, hung up quickly, showed no interest, or the call had technical issues.',
+    ].join('\n'),
+    summaryPrompt: [
+      'Write a detailed summary of this phone call (4-6 sentences).',
+      'Include:',
+      '- Who was called and the purpose of the call',
+      '- How the contact responded and their level of engagement',
+      '- Key information exchanged or questions answered',
+      '- The outcome: was an appointment scheduled? Did they express interest? Any concerns raised?',
+      '- What happens next (follow-up, visit, callback, etc.)',
+      'Be specific — reference actual details from the conversation rather than being generic.',
+    ].join('\n'),
+  };
+}
