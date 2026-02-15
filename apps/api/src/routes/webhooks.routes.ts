@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { Prisma } from '@prisma/client';
 import type { CallOutcome } from '@prisma/client';
+import * as chrono from 'chrono-node';
 import { prisma } from '../config/database.js';
 import { callsService } from '../services/calls.service.js';
 import { wsService } from '../index.js';
@@ -342,11 +343,26 @@ async function handleEndOfCall(message: VapiWebhookMessage) {
     // Extract appointment details
     let appointmentDetails: Record<string, unknown> | null = null;
     if (sd?.appointmentBooked === true || sd?.appointmentBooked === 'true') {
+      const rawDate = sd.appointmentDate as string | undefined;
+      const rawTime = sd.appointmentTime as string | undefined;
+
+      // Resolve natural language date/time (e.g. "next Thursday at 9 AM") to ISO
+      let resolvedDateTime: string | null = null;
+      if (rawDate || rawTime) {
+        const naturalText = [rawDate, rawTime].filter(Boolean).join(' at ');
+        const callDate = call.endedAt ?? call.startedAt ?? new Date();
+        const parsed = chrono.parseDate(naturalText, callDate);
+        if (parsed) {
+          resolvedDateTime = parsed.toISOString();
+        }
+      }
+
       appointmentDetails = {
         scheduled: true,
-        date: sd.appointmentDate,
-        time: sd.appointmentTime,
+        date: rawDate,
+        time: rawTime,
         type: sd.appointmentType,
+        resolvedDateTime,
       };
       outcome = 'SUCCESS';
       callResult = 'PASS';

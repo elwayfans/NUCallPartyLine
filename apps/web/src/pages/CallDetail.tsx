@@ -259,18 +259,14 @@ export function CallDetail() {
                     <span className="text-sm font-semibold text-blue-800">Appointment Scheduled</span>
                   </div>
                   <div className="grid gap-2 sm:grid-cols-3">
-                    {customFields.appointmentDetails.date && (
-                      <div>
-                        <dt className="text-xs font-medium text-blue-600">Date</dt>
-                        <dd className="text-sm text-blue-900">{customFields.appointmentDetails.date}</dd>
-                      </div>
-                    )}
-                    {customFields.appointmentDetails.time && (
-                      <div>
-                        <dt className="text-xs font-medium text-blue-600">Time</dt>
-                        <dd className="text-sm text-blue-900">{customFields.appointmentDetails.time}</dd>
-                      </div>
-                    )}
+                    <div>
+                      <dt className="text-xs font-medium text-blue-600">Date & Time</dt>
+                      <dd className="text-sm text-blue-900">
+                        {customFields.appointmentDetails.resolvedDateTime
+                          ? format(new Date(customFields.appointmentDetails.resolvedDateTime), 'EEEE, MMMM d, yyyy \'at\' h:mm a')
+                          : [customFields.appointmentDetails.date, customFields.appointmentDetails.time].filter(Boolean).join(' at ') || '-'}
+                      </dd>
+                    </div>
                     {customFields.appointmentDetails.type && (
                       <div>
                         <dt className="text-xs font-medium text-blue-600">Type</dt>

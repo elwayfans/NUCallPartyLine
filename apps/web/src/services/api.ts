@@ -81,6 +81,7 @@ export interface CallAnalytics {
       date?: string;
       time?: string;
       type?: string;
+      resolvedDateTime?: string | null;
     } | null;
     followUp?: {
       required: boolean;
