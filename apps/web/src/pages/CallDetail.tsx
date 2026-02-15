@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useLocation } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Clock, DollarSign, Calendar, CheckCircle, Code, Copy, Check, RotateCcw } from 'lucide-react';
 import { format } from 'date-fns';
@@ -11,6 +11,8 @@ import { useWebSocket } from '../hooks/useWebSocket';
 
 export function CallDetail() {
   const { id } = useParams<{ id: string }>();
+  const location = useLocation();
+  const backTo = (location.state as any)?.from || '/calls';
   const queryClient = useQueryClient();
 
   // Auto-refresh when call completes or analytics are processed
@@ -95,7 +97,7 @@ export function CallDetail() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Link to="/calls">
+          <Link to={backTo}>
             <Button variant="ghost" size="sm">
               <ArrowLeft className="h-4 w-4" />
             </Button>

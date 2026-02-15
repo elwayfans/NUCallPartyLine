@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Play, Pause, XCircle, Users, Plus, Trash2, RotateCcw, Phone } from 'lucide-react';
+import { ArrowLeft, Play, Pause, XCircle, Users, Trash2, RotateCcw, Phone } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api, campaignsApi, contactsApi, callsApi } from '../services/api';
 import { Button } from '../components/common/Button';
@@ -14,6 +14,12 @@ export function CampaignDetail() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [showAddContactsModal, setShowAddContactsModal] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<{
+    title: string;
+    message: string;
+    variant: 'danger' | 'warning';
+    onConfirm: () => void;
+  } | null>(null);
 
   const { data: campaignData, isLoading } = useQuery({
     queryKey: ['campaign', id],
@@ -143,6 +149,16 @@ export function CampaignDetail() {
     ? Math.round(((campaign.completedCalls + campaign.failedCalls) / campaign.totalContacts) * 100)
     : 0;
 
+  // Compute outcome stats from calls
+  const connectedOutcomes = ['SUCCESS', 'PARTIAL', 'CALLBACK_REQUESTED', 'DECLINED'];
+  const notConnectedOutcomes = ['NO_RESPONSE', 'WRONG_NUMBER', 'TECHNICAL_FAILURE'];
+  const connected = calls.filter((c) => c.outcome && connectedOutcomes.includes(c.outcome)).length;
+  const notConnected = calls.filter((c) => c.outcome && notConnectedOutcomes.includes(c.outcome)).length;
+  const appointmentsBooked = calls.filter((c) => {
+    const cf = (c as any).analytics?.customFields;
+    return cf?.appointmentDetails?.scheduled === true;
+  }).length;
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -223,11 +239,12 @@ export function CampaignDetail() {
           {['DRAFT', 'IN_PROGRESS', 'PAUSED'].includes(campaign.status) && (
             <Button
               variant="ghost"
-              onClick={() => {
-                if (confirm('Are you sure you want to cancel this campaign?')) {
-                  cancelMutation.mutate();
-                }
-              }}
+              onClick={() => setConfirmAction({
+                title: 'Cancel Campaign',
+                message: 'Are you sure you want to cancel this campaign? Any in-progress calls will be stopped.',
+                variant: 'danger',
+                onConfirm: () => cancelMutation.mutate(),
+              })}
             >
               <XCircle className="h-4 w-4" />
             </Button>
@@ -236,11 +253,12 @@ export function CampaignDetail() {
             <Button
               variant="secondary"
               leftIcon={<RotateCcw className="h-4 w-4" />}
-              onClick={() => {
-                if (confirm('Reset this campaign to draft? This will delete all call records and reset contacts to pending.')) {
-                  resetMutation.mutate();
-                }
-              }}
+              onClick={() => setConfirmAction({
+                title: 'Reset Campaign',
+                message: 'This will delete all call records and reset contacts to pending. This action cannot be undone.',
+                variant: 'warning',
+                onConfirm: () => resetMutation.mutate(),
+              })}
               isLoading={resetMutation.isPending}
             >
               Reset
@@ -249,11 +267,12 @@ export function CampaignDetail() {
           {['DRAFT', 'COMPLETED', 'CANCELLED'].includes(campaign.status) && (
             <Button
               variant="ghost"
-              onClick={() => {
-                if (confirm('Are you sure you want to delete this campaign?')) {
-                  deleteMutation.mutate();
-                }
-              }}
+              onClick={() => setConfirmAction({
+                title: 'Delete Campaign',
+                message: 'Are you sure you want to permanently delete this campaign? This action cannot be undone.',
+                variant: 'danger',
+                onConfirm: () => deleteMutation.mutate(),
+              })}
             >
               <Trash2 className="h-4 w-4 text-red-500" />
             </Button>
@@ -262,22 +281,30 @@ export function CampaignDetail() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <p className="text-sm text-gray-500">Total Contacts</p>
-          <p className="mt-1 text-2xl font-semibold text-gray-900">{campaign.totalContacts}</p>
+          <p className="text-sm text-gray-500">Completed / Failed</p>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="text-2xl font-semibold text-green-600">{campaign.completedCalls}</span>
+            <span className="text-lg text-gray-400">/</span>
+            <span className="text-2xl font-semibold text-red-600">{campaign.failedCalls}</span>
+          </div>
         </div>
         <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <p className="text-sm text-gray-500">Completed</p>
-          <p className="mt-1 text-2xl font-semibold text-green-600">{campaign.completedCalls}</p>
+          <p className="text-sm text-gray-500">Connected / Not Connected</p>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="text-2xl font-semibold text-green-600">{connected}</span>
+            <span className="text-lg text-gray-400">/</span>
+            <span className="text-2xl font-semibold text-red-600">{notConnected}</span>
+          </div>
         </div>
         <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <p className="text-sm text-gray-500">Failed</p>
-          <p className="mt-1 text-2xl font-semibold text-red-600">{campaign.failedCalls}</p>
-        </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <p className="text-sm text-gray-500">Progress</p>
-          <p className="mt-1 text-2xl font-semibold text-gray-900">{progress}%</p>
+          <p className="text-sm text-gray-500">Appointments Booked / Not Booked</p>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="text-2xl font-semibold text-green-600">{appointmentsBooked}</span>
+            <span className="text-lg text-gray-400">/</span>
+            <span className="text-2xl font-semibold text-red-600">{campaign.totalContacts - appointmentsBooked}</span>
+          </div>
         </div>
       </div>
 
@@ -406,7 +433,9 @@ export function CampaignDetail() {
       {/* Calls list */}
       <div className="rounded-lg border border-gray-200 bg-white shadow">
         <div className="border-b border-gray-200 px-4 py-3">
-          <h2 className="font-semibold text-gray-900">Call History</h2>
+          <h2 className="font-semibold text-gray-900">
+              Calls ({calls.length})
+            </h2>
         </div>
         {calls.length === 0 ? (
           <div className="p-8 text-center text-gray-500">
@@ -417,26 +446,50 @@ export function CampaignDetail() {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Contact</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Phone</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Status</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Result</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Reached</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Appt</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Duration</th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Time</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {calls.map((call) => (
-                <tr key={call.id} className="hover:bg-gray-50">
+              {calls.map((call) => {
+                const isCompleted = call.status === 'COMPLETED';
+                const isFailed = ['FAILED', 'NO_ANSWER', 'BUSY'].includes(call.status);
+                const isConnected = call.outcome && connectedOutcomes.includes(call.outcome);
+                const isNotConnected = call.outcome && notConnectedOutcomes.includes(call.outcome);
+                const hasAppt = (call as any).analytics?.customFields?.appointmentDetails?.scheduled === true;
+                return (
+                <tr
+                  key={call.id}
+                  className="hover:bg-gray-50 cursor-pointer"
+                  onClick={() => navigate(`/calls/${call.id}`, { state: { from: `/campaigns/${id}` } })}
+                >
                   <td className="px-4 py-3">
-                    <Link
-                      to={`/calls/${call.id}`}
-                      className="font-medium text-gray-900 hover:text-primary-600"
-                    >
-                      {call.contact?.firstName} {call.contact?.lastName}
-                    </Link>
+                    <p className="font-medium text-gray-900">
+                      {call.contact ? `${call.contact.firstName} ${call.contact.lastName}` : <span className="italic text-gray-400">&lt;Test Call&gt;</span>}
+                    </p>
+                    <p className="text-sm text-gray-500">{call.phoneNumber}</p>
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-500">{call.phoneNumber}</td>
                   <td className="px-4 py-3">
                     <CallStatusBadge status={call.status} />
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    {isCompleted ? <span className="font-medium text-green-600">Completed</span>
+                      : isFailed ? <span className="font-medium text-red-600">Failed</span>
+                      : <span className="text-gray-400">-</span>}
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    {isConnected ? <span className="font-medium text-green-600">Connected</span>
+                      : isNotConnected ? <span className="font-medium text-red-600">No</span>
+                      : <span className="text-gray-400">-</span>}
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    {hasAppt ? <span className="font-medium text-green-600">Booked</span>
+                      : (isCompleted || isFailed) ? <span className="font-medium text-red-600">No</span>
+                      : <span className="text-gray-400">-</span>}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-500">
                     {call.duration ? `${Math.floor(call.duration / 60)}:${(call.duration % 60).toString().padStart(2, '0')}` : '-'}
@@ -445,7 +498,8 @@ export function CampaignDetail() {
                     {call.startedAt ? new Date(call.startedAt).toLocaleString() : '-'}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         )}
@@ -457,6 +511,31 @@ export function CampaignDetail() {
         onClose={() => setShowAddContactsModal(false)}
         campaignId={id!}
       />
+
+      {/* Confirmation Modal */}
+      <Modal
+        isOpen={!!confirmAction}
+        onClose={() => setConfirmAction(null)}
+        title={confirmAction?.title ?? ''}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">{confirmAction?.message}</p>
+          <div className="flex justify-end gap-3">
+            <Button variant="secondary" onClick={() => setConfirmAction(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant={confirmAction?.variant === 'danger' ? 'danger' : 'primary'}
+              onClick={() => {
+                confirmAction?.onConfirm();
+                setConfirmAction(null);
+              }}
+            >
+              {confirmAction?.title}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

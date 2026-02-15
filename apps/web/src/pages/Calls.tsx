@@ -1,11 +1,10 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
-import { Phone, Clock, RefreshCw } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { RefreshCw } from 'lucide-react';
 import { callsApi } from '../services/api';
 import { Button } from '../components/common/Button';
-import { CallStatusBadge, OutcomeBadge } from '../components/common/Badge';
-import { formatDistanceToNow } from 'date-fns';
+import { CallStatusBadge } from '../components/common/Badge';
 import { useWebSocket } from '../hooks/useWebSocket';
 
 export function Calls() {
@@ -13,6 +12,7 @@ export function Calls() {
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [syncing, setSyncing] = useState(false);
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   // Auto-refresh call list when calls complete or analytics are processed
   useWebSocket({
@@ -39,6 +39,9 @@ export function Calls() {
 
   const calls = data?.data?.data ?? [];
   const pagination = data?.data?.pagination;
+
+  const connectedOutcomes = ['SUCCESS', 'PARTIAL', 'CALLBACK_REQUESTED', 'DECLINED'];
+  const notConnectedOutcomes = ['NO_RESPONSE', 'WRONG_NUMBER', 'TECHNICAL_FAILURE'];
 
   const formatDuration = (seconds?: number | null) => {
     if (!seconds) return '-';
@@ -90,64 +93,81 @@ export function Calls() {
       </div>
 
       {/* Calls list */}
-      <div className="space-y-4">
+      <div className="rounded-lg border border-gray-200 bg-white shadow">
         {isLoading ? (
-          <div className="rounded-lg border border-gray-200 bg-white p-8 text-center text-gray-500">
-            Loading...
-          </div>
+          <div className="p-8 text-center text-gray-500">Loading...</div>
         ) : calls.length === 0 ? (
-          <div className="rounded-lg border border-gray-200 bg-white p-8 text-center">
+          <div className="p-8 text-center">
             <p className="text-gray-500">No calls yet</p>
             <Link to="/campaigns">
               <Button className="mt-4">Start a Campaign</Button>
             </Link>
           </div>
         ) : (
-          calls.map((call) => (
-            <Link
-              key={call.id}
-              to={`/calls/${call.id}`}
-              className="block rounded-lg border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition-shadow"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="rounded-full bg-gray-100 p-3">
-                    <Phone className="h-5 w-5 text-gray-600" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-gray-900">
-                        {call.contact?.firstName} {call.contact?.lastName}
-                      </span>
-                      <CallStatusBadge status={call.status} />
-                      {call.outcome && <OutcomeBadge outcome={call.outcome} />}
-                    </div>
-                    <p className="text-sm text-gray-500">{call.phoneNumber}</p>
-                    <p className="text-xs text-gray-400">
-                      {call.createdAt
-                        ? formatDistanceToNow(new Date(call.createdAt), { addSuffix: true })
-                        : '-'}
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Contact</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Status</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Result</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Reached</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Appt</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Campaign</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Duration</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Time</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {calls.map((call) => {
+                const isCompleted = call.status === 'COMPLETED';
+                const isFailed = ['FAILED', 'NO_ANSWER', 'BUSY'].includes(call.status);
+                const isConnected = call.outcome && connectedOutcomes.includes(call.outcome);
+                const isNotConnected = call.outcome && notConnectedOutcomes.includes(call.outcome);
+                const hasAppt = (call as any).analytics?.customFields?.appointmentDetails?.scheduled === true;
+                return (
+                <tr
+                  key={call.id}
+                  className="hover:bg-gray-50 cursor-pointer"
+                  onClick={() => navigate(`/calls/${call.id}`)}
+                >
+                  <td className="px-4 py-3">
+                    <p className="font-medium text-gray-900">
+                      {call.contact ? `${call.contact.firstName} ${call.contact.lastName}` : <span className="italic text-gray-400">&lt;Test Call&gt;</span>}
                     </p>
-                    {call.analytics?.summary && (
-                      <p className="mt-1 text-sm text-gray-600 line-clamp-1">
-                        {call.analytics.summary}
-                      </p>
-                    )}
-                    {call.campaign && (
-                      <span className="text-sm text-primary-600">
-                        {call.campaign.name}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-1 text-sm text-gray-500">
-                  <Clock className="h-4 w-4" />
-                  <span>{formatDuration(call.duration)}</span>
-                </div>
-              </div>
-            </Link>
-          ))
+                    <p className="text-sm text-gray-500">{call.phoneNumber}</p>
+                  </td>
+                  <td className="px-4 py-3">
+                    <CallStatusBadge status={call.status} />
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    {isCompleted ? <span className="font-medium text-green-600">Completed</span>
+                      : isFailed ? <span className="font-medium text-red-600">Failed</span>
+                      : <span className="text-gray-400">-</span>}
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    {isConnected ? <span className="font-medium text-green-600">Connected</span>
+                      : isNotConnected ? <span className="font-medium text-red-600">No</span>
+                      : <span className="text-gray-400">-</span>}
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    {hasAppt ? <span className="font-medium text-green-600">Booked</span>
+                      : (isCompleted || isFailed) ? <span className="font-medium text-red-600">No</span>
+                      : <span className="text-gray-400">-</span>}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-500">
+                    {call.campaign?.name ?? '-'}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-500">
+                    {formatDuration(call.duration)}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-500">
+                    {call.startedAt ? new Date(call.startedAt).toLocaleString() : '-'}
+                  </td>
+                </tr>
+                );
+              })}
+            </tbody>
+          </table>
         )}
       </div>
 
