@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate } from 'react-router-dom';
-import { Plus, Play, Pause, XCircle, Trash2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Plus, Play, Pause, XCircle, Trash2, Phone } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api, campaignsApi, contactsApi, type Campaign } from '../services/api';
 import { Button } from '../components/common/Button';
@@ -19,6 +19,11 @@ export function Campaigns() {
   const { data, isLoading } = useQuery({
     queryKey: ['campaigns'],
     queryFn: () => campaignsApi.list(),
+    refetchInterval: (query) => {
+      const campaigns = query.state.data?.data?.data ?? [];
+      const hasActive = campaigns.some((c: Campaign) => c.status === 'IN_PROGRESS');
+      return hasActive ? 5000 : false;
+    },
   });
 
   const deleteMutation = useMutation({
@@ -99,17 +104,15 @@ export function Campaigns() {
           campaigns.map((campaign) => (
             <div
               key={campaign.id}
-              className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm"
+              className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm cursor-pointer hover:shadow-md transition-shadow"
+              onClick={() => navigate(`/campaigns/${campaign.id}`)}
             >
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-3">
-                    <Link
-                      to={`/campaigns/${campaign.id}`}
-                      className="text-lg font-semibold text-gray-900 hover:text-primary-600"
-                    >
+                    <span className="text-lg font-semibold text-gray-900">
                       {campaign.name}
-                    </Link>
+                    </span>
                     <CampaignStatusBadge status={campaign.status} />
                   </div>
                   {campaign.description && (
@@ -128,7 +131,8 @@ export function Campaigns() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events */}
+                <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                   {campaign.status === 'DRAFT' && (
                     <>
                       <Button
@@ -203,6 +207,22 @@ export function Campaigns() {
               {/* Progress bar for active campaigns */}
               {['IN_PROGRESS', 'PAUSED'].includes(campaign.status) && campaign.totalContacts > 0 && (
                 <div className="mt-4">
+                  {campaign.status === 'IN_PROGRESS' && (() => {
+                    const active = (campaign as any).campaignContacts ?? [];
+                    return (
+                      <div className="mb-2 flex items-center gap-2 text-sm text-primary-700">
+                        <Phone className="h-3.5 w-3.5 animate-pulse" />
+                        <span>
+                          Calling{active.length > 0 && ': '}
+                          {active.length > 0
+                            ? active.map((cc: any) => `${cc.contact.firstName} ${cc.contact.lastName}`).join(', ')
+                            : '...'
+                          }
+                          {' '}&mdash; {campaign.completedCalls + campaign.failedCalls} of {campaign.totalContacts} done
+                        </span>
+                      </div>
+                    );
+                  })()}
                   <div className="flex justify-between text-xs text-gray-500">
                     <span>Progress</span>
                     <span>
@@ -216,7 +236,7 @@ export function Campaigns() {
                   </div>
                   <div className="mt-1 h-2 overflow-hidden rounded-full bg-gray-200">
                     <div
-                      className="h-full bg-primary-500"
+                      className="h-full bg-primary-500 transition-all"
                       style={{
                         width: `${
                           ((campaign.completedCalls + campaign.failedCalls) /

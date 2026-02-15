@@ -352,35 +352,34 @@ async function handleEndOfCall(message: VapiWebhookMessage) {
       callResult = 'PASS';
     }
 
+    // Extract follow-up info
+    const followUp = (sd?.followUpNeeded === true || sd?.followUpNeeded === 'true') ? {
+      required: true,
+      notes: sd.followUpAction as string | undefined,
+    } : null;
+
     // Sentiment from structured data
     const sentiment = sd?.sentiment as string | undefined;
-    const sentimentConfidence = sd?.sentimentConfidence as number | undefined;
-    const sentimentBreakdown = sd?.sentimentBreakdown as { positive: number; negative: number; neutral: number } | undefined;
 
     // Map sentiment string to DB enum
     const validSentiments = ['VERY_POSITIVE', 'POSITIVE', 'NEUTRAL', 'NEGATIVE', 'VERY_NEGATIVE'];
     const overallSentiment = sentiment && validSentiments.includes(sentiment) ? sentiment : null;
 
-    // Use callSummary from structured data if VAPI summary is missing
-    const effectiveSummary = vapiSummary ?? (sd?.callSummary as string) ?? null;
+    const effectiveSummary = vapiSummary ?? null;
 
     const customFields = {
       callResult,
-      callResultReason: (sd?.callResultReason as string) ?? effectiveSummary ?? '',
-      outcomeReason: (sd?.outcomeReason as string) ?? effectiveSummary ?? '',
+      outcomeReason: effectiveSummary ?? '',
       interestLevel: sd?.interestLevel as string | undefined,
-      objections: (sd?.objections ?? []) as string[],
       appointmentDetails,
-      actionItems: (sd?.actionItems ?? []) as string[],
-      nextSteps: (sd?.nextSteps ?? []) as string[],
-      extractedResponses: (sd?.extractedResponses ?? null) as Record<string, string> | null,
+      followUp,
       vapiSummary: effectiveSummary,
       vapiAnalysis: vapiAnalysis as Record<string, unknown>,
       vapiStructuredData: sd ?? null,
     };
 
     const speakerTurns = normalizedMessages.length;
-    const keyTopics = (sd?.keyTopics ?? []) as string[];
+    const keyTopics: string[] = [];
 
     await prisma.callAnalytics.upsert({
       where: { callId: call.id },
@@ -388,9 +387,6 @@ async function handleEndOfCall(message: VapiWebhookMessage) {
         callId: call.id,
         summary: effectiveSummary ?? null,
         overallSentiment: overallSentiment as any,
-        sentimentConfidence: sentimentConfidence ?? null,
-        sentimentBreakdown: sentimentBreakdown as unknown as Prisma.InputJsonValue ?? Prisma.JsonNull,
-        extractedResponses: (sd?.extractedResponses as unknown as Prisma.InputJsonValue) ?? Prisma.JsonNull,
         keyTopics,
         speakerTurns,
         customFields: customFields as unknown as Prisma.InputJsonValue,
@@ -399,9 +395,6 @@ async function handleEndOfCall(message: VapiWebhookMessage) {
       update: {
         summary: effectiveSummary ?? null,
         overallSentiment: overallSentiment as any,
-        sentimentConfidence: sentimentConfidence ?? null,
-        sentimentBreakdown: sentimentBreakdown as unknown as Prisma.InputJsonValue ?? Prisma.JsonNull,
-        extractedResponses: (sd?.extractedResponses as unknown as Prisma.InputJsonValue) ?? Prisma.JsonNull,
         keyTopics,
         speakerTurns,
         customFields: customFields as unknown as Prisma.InputJsonValue,

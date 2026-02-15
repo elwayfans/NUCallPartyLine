@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Play, Pause, XCircle, Users, Plus, Trash2, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Play, Pause, XCircle, Users, Plus, Trash2, RotateCcw, Phone } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api, campaignsApi, contactsApi, callsApi } from '../services/api';
 import { Button } from '../components/common/Button';
@@ -19,12 +19,20 @@ export function CampaignDetail() {
     queryKey: ['campaign', id],
     queryFn: () => campaignsApi.get(id!),
     enabled: !!id,
+    refetchInterval: (query) => {
+      const status = query.state.data?.data?.data?.status;
+      return status === 'IN_PROGRESS' ? 3000 : false;
+    },
   });
 
   const { data: callsData } = useQuery({
     queryKey: ['calls', { campaignId: id }],
     queryFn: () => callsApi.list({ campaignId: id, pageSize: 50 }),
     enabled: !!id,
+    refetchInterval: (query) => {
+      const status = campaignData?.data?.data?.status;
+      return status === 'IN_PROGRESS' ? 3000 : false;
+    },
   });
 
   const startMutation = useMutation({
@@ -288,6 +296,48 @@ export function CampaignDetail() {
           </div>
         </div>
       )}
+
+      {/* Currently Calling Banner */}
+      {campaign.status === 'IN_PROGRESS' && campaign.campaignContacts && (() => {
+        const activeContacts = campaign.campaignContacts.filter((cc: any) => cc.status === 'IN_PROGRESS');
+        const completedCount = campaign.campaignContacts.filter((cc: any) => ['COMPLETED', 'FAILED'].includes(cc.status)).length;
+        const totalCount = campaign.campaignContacts.length;
+
+        if (activeContacts.length === 0) return null;
+
+        const isSingle = activeContacts.length === 1;
+
+        return (
+          <div className="rounded-lg border border-primary-200 bg-primary-50 p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-100">
+                <Phone className="h-5 w-5 text-primary-600 animate-pulse" />
+              </div>
+              <div className="flex-1">
+                <p className="font-semibold text-primary-900">
+                  {isSingle
+                    ? `Calling contact ${completedCount + 1} of ${totalCount}`
+                    : `Calling ${activeContacts.length} contacts simultaneously (${completedCount} of ${totalCount} done)`
+                  }
+                </p>
+                {isSingle ? (
+                  <p className="text-sm text-primary-700">
+                    {activeContacts[0].contact.firstName} {activeContacts[0].contact.lastName} — {activeContacts[0].contact.phoneNumber}
+                  </p>
+                ) : (
+                  <div className="mt-1 space-y-0.5">
+                    {activeContacts.map((cc: any) => (
+                      <p key={cc.id} className="text-sm text-primary-700">
+                        {cc.contact.firstName} {cc.contact.lastName} — {cc.contact.phoneNumber}
+                      </p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Contacts */}
       {campaign.campaignContacts && campaign.campaignContacts.length > 0 && (

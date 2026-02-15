@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Clock, DollarSign, Calendar, CheckCircle, ArrowRight, Code, Copy, Check } from 'lucide-react';
+import { ArrowLeft, Clock, DollarSign, Calendar, CheckCircle, Code, Copy, Check, RotateCcw } from 'lucide-react';
 import { format } from 'date-fns';
 import { callsApi, type CallAnalytics } from '../services/api';
 import { Button } from '../components/common/Button';
@@ -233,71 +233,65 @@ export function CallDetail() {
                     <span className="font-semibold">Outcome:</span> {customFields.outcomeReason}
                   </p>
                 )}
-                {customFields?.callResultReason && customFields.callResultReason !== analytics?.summary && customFields.callResultReason !== customFields?.outcomeReason && (
-                  <p className="mt-1 text-sm text-gray-700 leading-relaxed">
-                    <span className="font-semibold">Result:</span> {customFields.callResultReason}
-                  </p>
-                )}
                 {customFields?.interestLevel && (
                   <p className="mt-2 text-sm text-gray-700 leading-relaxed">
                     <span className="font-semibold">Interest Level:</span>{' '}
                     <span className="capitalize">{customFields.interestLevel}</span>
                   </p>
                 )}
-                {customFields?.objections && customFields.objections.length > 0 && (
-                  <div className="mt-2">
-                    <p className="text-sm font-semibold text-gray-700">Objections:</p>
-                    <ul className="mt-1 space-y-0.5">
-                      {customFields.objections.map((obj, i) => (
-                        <li key={i} className="flex items-start gap-1.5 text-sm text-gray-600">
-                          <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
-                          {obj}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
               </div>
             </div>
           )}
 
-          {/* Appointment Details */}
-          {customFields?.appointmentDetails?.scheduled && (
+          {/* Appointment & Follow-Up */}
+          {(customFields?.appointmentDetails?.scheduled || customFields?.followUp?.required) && (
             <div className="rounded-lg border border-blue-200 bg-blue-50 p-5 shadow-sm">
-              <div className="flex items-center gap-2 mb-3">
-                <Calendar className="h-5 w-5 text-blue-600" />
-                <h2 className="text-base font-semibold text-blue-900">Appointment Scheduled</h2>
+              <div className="flex items-center gap-2 mb-4">
+                <CheckCircle className="h-5 w-5 text-blue-600" />
+                <h2 className="text-base font-semibold text-blue-900">Outcomes</h2>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                {customFields.appointmentDetails.date && (
-                  <div>
-                    <dt className="text-xs font-medium text-blue-600">Date</dt>
-                    <dd className="text-sm text-blue-900">{customFields.appointmentDetails.date}</dd>
+
+              {/* Appointment Details */}
+              {customFields?.appointmentDetails?.scheduled && (
+                <div className="mb-4 rounded-lg bg-blue-100 p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Calendar className="h-4 w-4 text-blue-700" />
+                    <span className="text-sm font-semibold text-blue-800">Appointment Scheduled</span>
                   </div>
-                )}
-                {customFields.appointmentDetails.time && (
-                  <div>
-                    <dt className="text-xs font-medium text-blue-600">Time</dt>
-                    <dd className="text-sm text-blue-900">{customFields.appointmentDetails.time}</dd>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {customFields.appointmentDetails.date && (
+                      <div>
+                        <dt className="text-xs font-medium text-blue-600">Date</dt>
+                        <dd className="text-sm text-blue-900">{customFields.appointmentDetails.date}</dd>
+                      </div>
+                    )}
+                    {customFields.appointmentDetails.time && (
+                      <div>
+                        <dt className="text-xs font-medium text-blue-600">Time</dt>
+                        <dd className="text-sm text-blue-900">{customFields.appointmentDetails.time}</dd>
+                      </div>
+                    )}
+                    {customFields.appointmentDetails.type && (
+                      <div>
+                        <dt className="text-xs font-medium text-blue-600">Type</dt>
+                        <dd className="text-sm text-blue-900">{customFields.appointmentDetails.type}</dd>
+                      </div>
+                    )}
                   </div>
-                )}
-                {customFields.appointmentDetails.location && (
-                  <div>
-                    <dt className="text-xs font-medium text-blue-600">Location</dt>
-                    <dd className="text-sm text-blue-900">{customFields.appointmentDetails.location}</dd>
+                </div>
+              )}
+
+              {/* Follow-Up Required */}
+              {customFields?.followUp?.required && (
+                <div className="rounded-lg bg-amber-50 border border-amber-200 p-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <RotateCcw className="h-4 w-4 text-amber-600" />
+                    <span className="text-sm font-semibold text-amber-800">Follow-Up Required</span>
                   </div>
-                )}
-                {customFields.appointmentDetails.type && (
-                  <div>
-                    <dt className="text-xs font-medium text-blue-600">Type</dt>
-                    <dd className="text-sm text-blue-900">{customFields.appointmentDetails.type}</dd>
-                  </div>
-                )}
-              </div>
-              {customFields.appointmentDetails.notes && (
-                <p className="mt-3 text-sm text-blue-800">
-                  <span className="font-medium">Notes:</span> {customFields.appointmentDetails.notes}
-                </p>
+                  {customFields.followUp.notes && (
+                    <p className="text-sm text-amber-700 mt-1">{customFields.followUp.notes}</p>
+                  )}
+                </div>
               )}
             </div>
           )}
@@ -326,17 +320,12 @@ export function CallDetail() {
                     )}
                   </div>
                 )}
-                {/* Sentiment - from OpenAI fallback path */}
+                {/* Sentiment */}
                 {analytics.overallSentiment && (
                   <div>
                     <dt className="text-sm text-gray-500">Overall Sentiment</dt>
                     <dd className="mt-1">
                       <SentimentBadge sentiment={analytics.overallSentiment} />
-                      {analytics.sentimentConfidence && (
-                        <span className="ml-2 text-sm text-gray-500">
-                          ({Math.round(analytics.sentimentConfidence * 100)}% confidence)
-                        </span>
-                      )}
                     </dd>
                   </div>
                 )}
@@ -351,53 +340,6 @@ export function CallDetail() {
                         >
                           {topic}
                         </span>
-                      ))}
-                    </dd>
-                  </div>
-                )}
-                {customFields?.actionItems && customFields.actionItems.length > 0 && (
-                  <div>
-                    <dt className="flex items-center gap-1 text-sm text-gray-500">
-                      <CheckCircle className="h-3.5 w-3.5" /> Action Items
-                    </dt>
-                    <dd className="mt-2">
-                      <ul className="space-y-1">
-                        {customFields.actionItems.map((item, i) => (
-                          <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
-                            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary-500" />
-                            {item}
-                          </li>
-                        ))}
-                      </ul>
-                    </dd>
-                  </div>
-                )}
-                {customFields?.nextSteps && customFields.nextSteps.length > 0 && (
-                  <div>
-                    <dt className="flex items-center gap-1 text-sm text-gray-500">
-                      <ArrowRight className="h-3.5 w-3.5" /> Next Steps
-                    </dt>
-                    <dd className="mt-2">
-                      <ul className="space-y-1">
-                        {customFields.nextSteps.map((step, i) => (
-                          <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
-                            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500" />
-                            {step}
-                          </li>
-                        ))}
-                      </ul>
-                    </dd>
-                  </div>
-                )}
-                {analytics.extractedResponses && Object.keys(analytics.extractedResponses).length > 0 && (
-                  <div>
-                    <dt className="text-sm text-gray-500">Extracted Responses</dt>
-                    <dd className="mt-2 space-y-2">
-                      {Object.entries(analytics.extractedResponses).map(([question, answer]) => (
-                        <div key={question} className="rounded bg-gray-50 p-2">
-                          <p className="text-xs font-medium text-gray-600">{question}</p>
-                          <p className="text-sm text-gray-900">{answer as string}</p>
-                        </div>
                       ))}
                     </dd>
                   </div>

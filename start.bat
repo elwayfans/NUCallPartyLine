@@ -60,13 +60,5 @@ echo.
 echo   API Server:  http://localhost:3001
 echo   Web App:     http://localhost:5173
 echo.
-echo   Waiting for servers to start...
-timeout /t 5 /nobreak >nul
-
-:: Open browser
-echo   Opening browser...
-start http://localhost:5173
-
-echo.
 echo   Done!
 echo.

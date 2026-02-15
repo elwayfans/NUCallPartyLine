@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Upload, Download, Plus, Trash2, CheckSquare, Square, Edit2 } from 'lucide-react';
+import { Search, Upload, Download, Plus, Trash2, CheckSquare, Square } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { contactsApi, type Contact } from '../services/api';
 import { Button } from '../components/common/Button';
@@ -194,11 +194,12 @@ export function Contacts() {
               contacts.map((contact) => (
                 <tr
                   key={contact.id}
-                  className={`hover:bg-gray-50 ${
+                  className={`hover:bg-gray-50 cursor-pointer ${
                     selectedContactIds.has(contact.id) ? 'bg-primary-50' : ''
                   }`}
+                  onClick={() => setEditingContact(contact)}
                 >
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <button
                       onClick={() => toggleContactSelection(contact.id)}
                       className="text-gray-400 hover:text-gray-600"
@@ -222,15 +223,8 @@ export function Contacts() {
                   <td className="px-4 py-3 text-sm text-gray-500">
                     {contact.email || '-'}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <div className="flex gap-2">
-                      <button
-                        onClick={() => setEditingContact(contact)}
-                        className="text-gray-400 hover:text-primary-600"
-                        title="Edit contact"
-                      >
-                        <Edit2 className="h-4 w-4" />
-                      </button>
                       <button
                         onClick={() => setDeletingContact(contact)}
                         className="text-gray-400 hover:text-red-600"

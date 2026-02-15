@@ -83,18 +83,16 @@ export function Assistants() {
           assistants.map((assistant) => (
             <div
               key={assistant.id}
-              className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm"
+              className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm cursor-pointer hover:shadow-md transition-shadow"
+              onClick={() => navigate(`/assistants/${assistant.id}`)}
             >
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-3">
                     <Bot className="h-5 w-5 text-primary-500" />
-                    <button
-                      onClick={() => navigate(`/assistants/${assistant.id}`)}
-                      className="font-semibold text-gray-900 hover:text-primary-600 text-left"
-                    >
+                    <span className="font-semibold text-gray-900">
                       {assistant.name}
-                    </button>
+                    </span>
                     <Badge variant={assistant.isActive ? 'success' : 'default'}>
                       {assistant.isActive ? 'Active' : 'Inactive'}
                     </Badge>
@@ -129,7 +127,8 @@ export function Assistants() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation();
                       if (confirm('Are you sure you want to delete this assistant?')) {
                         deleteMutation.mutate(assistant.id);
                       }

@@ -69,29 +69,23 @@ export interface CallAnalytics {
   id: string;
   callId: string;
   overallSentiment?: string | null;
-  sentimentConfidence?: number | null;
-  sentimentBreakdown?: { positive: number; negative: number; neutral: number } | null;
-  extractedResponses?: Record<string, string> | null;
   keyTopics: string[];
   speakerTurns?: number | null;
   summary?: string | null;
   customFields?: {
     callResult?: 'PASS' | 'FAIL' | 'INCONCLUSIVE';
-    callResultReason?: string;
     outcomeReason?: string;
     interestLevel?: string;
-    objections?: string[];
     appointmentDetails?: {
       scheduled: boolean;
       date?: string;
       time?: string;
-      location?: string;
       type?: string;
+    } | null;
+    followUp?: {
+      required: boolean;
       notes?: string;
     } | null;
-    extractedResponses?: Record<string, string> | null;
-    actionItems?: string[];
-    nextSteps?: string[];
     vapiSummary?: string;
     vapiAnalysis?: Record<string, unknown>;
     vapiStructuredData?: Record<string, unknown> | null;

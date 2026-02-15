@@ -1,6 +1,7 @@
 import { prisma } from '../config/database.js';
 import type { CampaignStatus, Prisma } from '@prisma/client';
 import { vapiService } from './vapi.service.js';
+import { assistantsService } from './assistants.service.js';
 import { env } from '../config/env.js';
 
 export interface CampaignFilters {
@@ -40,6 +41,12 @@ export class CampaignsService {
         include: {
           _count: {
             select: { campaignContacts: true, calls: true },
+          },
+          campaignContacts: {
+            where: { status: 'IN_PROGRESS' },
+            include: {
+              contact: { select: { firstName: true, lastName: true, phoneNumber: true } },
+            },
           },
         },
       }),
@@ -254,17 +261,38 @@ export class CampaignsService {
       .map((cc) => ({
         id: cc.contact.id,
         phoneNumber: cc.contact.phoneNumber,
+        firstName: cc.contact.firstName,
+        lastName: cc.contact.lastName,
+        email: cc.contact.email ?? undefined,
         campaignContactId: cc.id,
       }));
 
-    // Start batch calls
-    const results = await vapiService.createBatchCalls({
+    // Build batch call params — use local assistant (inline config) if set, otherwise fall back to VAPI assistant ID
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const batchParams: any = {
       campaignId: id,
       contacts: contactsToCall,
-      assistantId: campaign.vapiAssistantId,
       phoneNumberId: campaign.vapiPhoneNumberId ?? undefined,
       maxConcurrent: campaign.maxConcurrentCalls,
-    });
+    };
+
+    if (campaign.assistantId) {
+      // Local assistant — build inline config per contact (supports variable substitution)
+      batchParams.getAssistantConfig = async (contact: { firstName?: string; lastName?: string; phoneNumber: string; email?: string }) => {
+        return assistantsService.getCallConfig(campaign.assistantId!, {
+          firstName: contact.firstName,
+          lastName: contact.lastName,
+          phoneNumber: contact.phoneNumber,
+          email: contact.email,
+        });
+      };
+    } else {
+      // Fall back to legacy VAPI dashboard assistant
+      batchParams.assistantId = campaign.vapiAssistantId;
+    }
+
+    // Start batch calls
+    const results = await vapiService.createBatchCalls(batchParams);
 
     // Update campaign contact statuses
     for (const result of results) {
