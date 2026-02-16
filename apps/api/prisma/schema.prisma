@@ -108,6 +108,9 @@ model Campaign {
   startedAt         DateTime?
   completedAt       DateTime?
 
+  // Comma-separated email addresses for appointment notifications
+  notificationEmails String?
+
   maxConcurrentCalls Int       @default(5)
   retryAttempts      Int       @default(1)
   retryDelayMinutes  Int       @default(60)
@@ -175,6 +178,9 @@ model Call {
 
   // Inbound assistant to use for callbacks from this call (test calls only; campaign calls use campaign.inboundAssistantId)
   inboundAssistantId String?
+
+  // Comma-separated email addresses for appointment notifications (test calls only; campaign calls use campaign.notificationEmails)
+  notificationEmails String?
 
   status          CallStatus    @default(QUEUED)
   direction       CallDirection @default(OUTBOUND)

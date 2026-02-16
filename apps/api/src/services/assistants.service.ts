@@ -271,6 +271,18 @@ export function getAnalysisPlan() {
           type: 'string',
           description: 'What follow-up is needed (e.g. "Send email with program info", "Call back Friday")',
         },
+        confirmedEmail: {
+          type: 'string',
+          description: 'Email address confirmed or provided by the contact during the call',
+        },
+        confirmedFullName: {
+          type: 'string',
+          description: 'Full name confirmed or provided by the contact during the call',
+        },
+        confirmedPhone: {
+          type: 'string',
+          description: 'Phone number confirmed or provided by the contact during the call (if different from the call number)',
+        },
       },
       required: ['callOutcome', 'callResult', 'sentiment', 'appointmentBooked', 'followUpNeeded'],
     },
@@ -284,6 +296,9 @@ export function getAnalysisPlan() {
       'If appointmentBooked=true, fill appointmentDate, appointmentTime, appointmentType.',
       'followUpNeeded: true if any follow-up action required.',
       'If followUpNeeded=true, describe in followUpAction.',
+      'confirmedEmail: extract if the contact stated, confirmed, or spelled out their email address.',
+      'confirmedFullName: extract if the contact stated or confirmed their full name.',
+      'confirmedPhone: extract only if the contact provided a different/preferred phone number.',
     ].join('\n'),
     successEvaluationPrompt: [
       'Evaluate whether this call achieved its goal.',

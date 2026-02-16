@@ -5,6 +5,7 @@ import * as chrono from 'chrono-node';
 import { prisma } from '../config/database.js';
 import { callsService } from '../services/calls.service.js';
 import { assistantsService, getAnalysisPlan } from '../services/assistants.service.js';
+import { sendAppointmentEmail } from '../services/email.service.js';
 import { wsService } from '../index.js';
 
 const router = Router();
@@ -520,6 +521,74 @@ async function handleEndOfCall(message: VapiWebhookMessage) {
       };
       outcome = 'SUCCESS';
       callResult = 'PASS';
+
+      // Send appointment email notifications
+      // Resolve notification emails: campaign → this call → original outbound call (for callbacks)
+      const notificationEmails = await (async () => {
+        if (call.campaignId) {
+          const campaign = await prisma.campaign.findUnique({
+            where: { id: call.campaignId },
+            select: { notificationEmails: true },
+          });
+          if (campaign?.notificationEmails) return campaign.notificationEmails;
+        }
+        // Check this call record (test calls store it directly)
+        const callRecord = await prisma.call.findUnique({
+          where: { id: call.id },
+          select: { notificationEmails: true },
+        });
+        if (callRecord?.notificationEmails) return callRecord.notificationEmails;
+        // For inbound callbacks, trace back to the original outbound call
+        if (call.direction === 'INBOUND') {
+          const originalCall = await prisma.call.findFirst({
+            where: { phoneNumber: call.phoneNumber, direction: 'OUTBOUND' },
+            orderBy: { createdAt: 'desc' },
+            select: { notificationEmails: true, campaignId: true },
+          });
+          if (originalCall?.notificationEmails) return originalCall.notificationEmails;
+          // Also check the original call's campaign
+          if (originalCall?.campaignId) {
+            const campaign = await prisma.campaign.findUnique({
+              where: { id: originalCall.campaignId },
+              select: { notificationEmails: true },
+            });
+            if (campaign?.notificationEmails) return campaign.notificationEmails;
+          }
+        }
+        return null;
+      })();
+
+      if (notificationEmails) {
+        // Resolve contact info — fall back to phone number lookup for test calls (no linked contact)
+        const contact = call.contact ?? await prisma.contact.findFirst({
+          where: { phoneNumber: call.phoneNumber },
+          orderBy: { createdAt: 'desc' },
+        });
+
+        // Send to both: confirmed email from call AND existing contact email (deduped in email service)
+        const confirmedEmail = sd.confirmedEmail as string | undefined;
+        const contactEmail = contact?.email || undefined;
+        const prospectEmails = [confirmedEmail, contactEmail].filter((e): e is string => !!e && e.includes('@'));
+        const confirmedName = sd.confirmedFullName as string | undefined;
+        const prospectName = confirmedName
+          || (contact ? `${contact.firstName} ${contact.lastName}`.trim() : null)
+          || call.phoneNumber;
+
+        console.log(`[Email] Contact resolved: ${contact ? contact.id : 'none'}, confirmedEmail: ${confirmedEmail ?? 'none'}, contactEmail: ${contactEmail ?? 'none'}, prospectEmails: [${prospectEmails.join(', ')}], name: ${prospectName}, notificationEmails: ${notificationEmails}`);
+
+        sendAppointmentEmail({
+          prospectEmails,
+          prospectName,
+          notificationEmails,
+          rawDate,
+          rawTime,
+          appointmentType: sd.appointmentType as string | undefined,
+          resolvedDateTime,
+          phoneNumber: call.phoneNumber,
+          transcriptMessages: normalizedMessages,
+          callSummary: vapiSummary ?? undefined,
+        }).catch((err) => console.error('Appointment email error:', err));
+      }
     }
 
     // Extract follow-up info
@@ -543,10 +612,17 @@ async function handleEndOfCall(message: VapiWebhookMessage) {
       interestLevel: sd?.interestLevel as string | undefined,
       appointmentDetails,
       followUp,
+      confirmedEmail: sd?.confirmedEmail as string | undefined,
+      confirmedFullName: sd?.confirmedFullName as string | undefined,
+      confirmedPhone: sd?.confirmedPhone as string | undefined,
       vapiSummary: effectiveSummary,
       vapiAnalysis: vapiAnalysis as Record<string, unknown>,
       vapiStructuredData: sd ?? null,
     };
+
+    // Confirmed info from the call is stored in customFields above (confirmedEmail, confirmedFullName, confirmedPhone)
+    // but we do NOT auto-update the contact record — the AI can mishear, and overwriting
+    // real contact data (especially phone numbers) with bad data is worse than not updating.
 
     const speakerTurns = normalizedMessages.length;
     const keyTopics: string[] = [];

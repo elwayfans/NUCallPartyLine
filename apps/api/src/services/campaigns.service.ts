@@ -97,6 +97,7 @@ export class CampaignsService {
     description?: string;
     assistantId?: string;
     inboundAssistantId?: string | null;
+    notificationEmails?: string | null;
     vapiAssistantId?: string;
     vapiPhoneNumberId?: string;
     maxConcurrentCalls?: number;
@@ -109,6 +110,7 @@ export class CampaignsService {
         description: data.description,
         assistantId: data.assistantId,
         inboundAssistantId: data.inboundAssistantId ?? undefined,
+        notificationEmails: data.notificationEmails ?? undefined,
         vapiAssistantId: data.vapiAssistantId ?? env.VAPI_ASSISTANT_ID,
         vapiPhoneNumberId: data.vapiPhoneNumberId ?? env.VAPI_PHONE_NUMBER_ID,
         maxConcurrentCalls: data.maxConcurrentCalls ?? env.MAX_CONCURRENT_CALLS,
@@ -126,6 +128,7 @@ export class CampaignsService {
       description: string | null;
       assistantId: string;
       inboundAssistantId: string | null;
+      notificationEmails: string | null;
       vapiAssistantId: string;
       vapiPhoneNumberId: string | null;
       maxConcurrentCalls: number;

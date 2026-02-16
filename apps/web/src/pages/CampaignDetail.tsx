@@ -101,7 +101,7 @@ export function CampaignDetail() {
   const assistants: Array<{ id: string; name: string }> = assistantsData?.data?.data ?? [];
 
   const updateAssistantMutation = useMutation({
-    mutationFn: (data: { assistantId?: string; inboundAssistantId?: string | null }) => campaignsApi.update(id!, data as any),
+    mutationFn: (data: { assistantId?: string; inboundAssistantId?: string | null; notificationEmails?: string | null }) => campaignsApi.update(id!, data as any),
     onSuccess: () => {
       toast.success('Assistant updated');
       queryClient.invalidateQueries({ queryKey: ['campaign', id] });
@@ -222,6 +222,27 @@ export function CampaignDetail() {
             ) : (
               <span className="font-medium text-gray-700">
                 {(campaign as any).inboundAssistant?.name ?? 'None'}
+              </span>
+            )}
+          </div>
+          <div className="mt-1 flex items-start gap-2 text-sm">
+            <span className="text-gray-500 pt-1">Notification emails:</span>
+            {isDraft ? (
+              <div className="flex-1 max-w-md">
+                <input
+                  type="text"
+                  value={(campaign as any).notificationEmails ?? ''}
+                  onChange={(e) => {
+                    updateAssistantMutation.mutate({ notificationEmails: e.target.value || null });
+                  }}
+                  placeholder="admissions@neumont.edu, recruiter@neumont.edu"
+                  className="w-full rounded border border-gray-300 px-2 py-0.5 text-sm text-gray-700 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                />
+                <p className="text-xs text-gray-400 mt-0.5">Comma-separated. Calendar invite sent on appointment booking.</p>
+              </div>
+            ) : (
+              <span className="font-medium text-gray-700">
+                {(campaign as any).notificationEmails || 'None'}
               </span>
             )}
           </div>

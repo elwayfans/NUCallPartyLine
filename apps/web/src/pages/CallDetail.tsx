@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Clock, DollarSign, Calendar, CheckCircle, Code, Copy, Check, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Clock, DollarSign, Calendar, CheckCircle, Code, Copy, Check, RotateCcw, Download } from 'lucide-react';
 import { format } from 'date-fns';
 import { callsApi, type CallAnalytics } from '../services/api';
 import { Button } from '../components/common/Button';
@@ -69,6 +69,110 @@ export function CallDetail() {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}m ${secs}s`;
+  };
+
+  const downloadICS = () => {
+    const appt = customFields?.appointmentDetails;
+    if (!appt?.scheduled) return;
+
+    // Build appointment date
+    let startDate: Date;
+    if (appt.resolvedDateTime) {
+      startDate = new Date(appt.resolvedDateTime);
+    } else {
+      startDate = new Date();
+      startDate.setDate(startDate.getDate() + 1);
+      startDate.setHours(10, 0, 0, 0);
+    }
+    const endDate = new Date(startDate.getTime() + 30 * 60 * 1000);
+
+    const fmtDate = (d: Date) =>
+      d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+
+    const uid = `${call!.id}-${Date.now()}@nucallpartyline`;
+
+    // Build description with contact details and transcript
+    const descParts: string[] = [];
+    descParts.push('=== CONTACT DETAILS ===');
+    if (call!.contact) {
+      descParts.push(`Name: ${call!.contact.firstName} ${call!.contact.lastName}`);
+      descParts.push(`Phone: ${call!.phoneNumber}`);
+      if (call!.contact.email) descParts.push(`Email: ${call!.contact.email}`);
+      if (call!.contact.studentName) {
+        descParts.push(`Student: ${call!.contact.studentName}${call!.contact.studentGrade ? ` (${call!.contact.studentGrade})` : ''}`);
+      }
+    } else {
+      descParts.push(`Phone: ${call!.phoneNumber}`);
+    }
+
+    descParts.push('');
+    descParts.push(`Appointment Type: ${appt.type || 'Admissions Appointment'}`);
+    if (appt.date) descParts.push(`Date (as stated): ${appt.date}`);
+    if (appt.time) descParts.push(`Time (as stated): ${appt.time}`);
+
+    if (analytics?.summary) {
+      descParts.push('');
+      descParts.push('=== CALL SUMMARY ===');
+      descParts.push(analytics.summary);
+    }
+
+    if (transcript) {
+      descParts.push('');
+      descParts.push('=== FULL TRANSCRIPT ===');
+      if (transcript.messages?.length > 0) {
+        transcript.messages
+          .filter((m: { role: string; content: string }) => m.role !== 'system')
+          .forEach((m: { role: string; content: string }) => {
+            const role = m.role === 'bot' ? 'AI' : m.role === 'assistant' ? 'AI' : 'Contact';
+            const text = m.content || '';
+            if (text) descParts.push(`${role}: ${text}`);
+          });
+      } else if (transcript.fullText) {
+        descParts.push(transcript.fullText);
+      }
+    }
+
+    // Escape for ICS: replace newlines with literal \n, fold long lines
+    const description = descParts.join('\n').replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;');
+
+    const contactName = call!.contact
+      ? `${call!.contact.firstName} ${call!.contact.lastName}`
+      : call!.phoneNumber;
+    const summary = `Neumont University - ${appt.type || 'Admissions Appointment'} with ${contactName}`;
+
+    const attendeeLines: string[] = [];
+    if (call!.contact?.email) {
+      attendeeLines.push(`ATTENDEE;RSVP=TRUE:mailto:${call!.contact.email}`);
+    }
+
+    const icsLines = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//NUCallPartyLine//Appointment//EN',
+      'CALSCALE:GREGORIAN',
+      'METHOD:REQUEST',
+      'BEGIN:VEVENT',
+      `UID:${uid}`,
+      `DTSTAMP:${fmtDate(new Date())}`,
+      `DTSTART:${fmtDate(startDate)}`,
+      `DTEND:${fmtDate(endDate)}`,
+      `SUMMARY:${summary}`,
+      `DESCRIPTION:${description}`,
+      ...attendeeLines,
+      'STATUS:CONFIRMED',
+      'END:VEVENT',
+      'END:VCALENDAR',
+    ];
+
+    const blob = new Blob([icsLines.join('\r\n')], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `appointment-${contactName.replace(/\s+/g, '-').toLowerCase()}.ics`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   if (callLoading) {
@@ -276,6 +380,13 @@ export function CallDetail() {
                       </div>
                     )}
                   </div>
+                  <button
+                    onClick={downloadICS}
+                    className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 transition-colors"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Download Calendar Invite (.ics)
+                  </button>
                 </div>
               )}
 

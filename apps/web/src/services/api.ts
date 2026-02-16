@@ -46,6 +46,7 @@ export interface Campaign {
   assistant?: { id: string; name: string } | null;
   inboundAssistantId?: string | null;
   inboundAssistant?: { id: string; name: string } | null;
+  notificationEmails?: string | null;
   vapiAssistantId: string;
   vapiPhoneNumberId?: string | null;
   totalContacts: number;
@@ -191,6 +192,7 @@ export const campaignsApi = {
     description?: string;
     assistantId?: string;
     inboundAssistantId?: string | null;
+    notificationEmails?: string | null;
     vapiAssistantId?: string;
     maxConcurrentCalls?: number;
   }) => api.post<ApiResponse<Campaign>>('/campaigns', data),

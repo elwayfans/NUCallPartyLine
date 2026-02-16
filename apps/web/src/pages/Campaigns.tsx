@@ -284,6 +284,7 @@ function CreateCampaignModal({
   const [description, setDescription] = useState('');
   const [assistantId, setAssistantId] = useState('');
   const [inboundAssistantId, setInboundAssistantId] = useState('');
+  const [notificationEmails, setNotificationEmails] = useState('');
   const queryClient = useQueryClient();
 
   // Fetch available assistants
@@ -296,7 +297,7 @@ function CreateCampaignModal({
   const assistants = assistantsData?.data?.data ?? [];
 
   const createMutation = useMutation({
-    mutationFn: (data: { name: string; description?: string; assistantId?: string; inboundAssistantId?: string | null }) =>
+    mutationFn: (data: { name: string; description?: string; assistantId?: string; inboundAssistantId?: string | null; notificationEmails?: string | null }) =>
       campaignsApi.create(data),
     onSuccess: (response) => {
       toast.success('Campaign created');
@@ -305,6 +306,7 @@ function CreateCampaignModal({
       setDescription('');
       setAssistantId('');
       setInboundAssistantId('');
+      setNotificationEmails('');
       onCreated(response.data.data.id);
     },
     onError: (error: Error) => {
@@ -327,6 +329,7 @@ function CreateCampaignModal({
       description: description.trim() || undefined,
       assistantId,
       inboundAssistantId: inboundAssistantId || null,
+      notificationEmails: notificationEmails.trim() || null,
     });
   };
 
@@ -385,6 +388,21 @@ function CreateCampaignModal({
           </select>
           <p className="mt-1 text-xs text-gray-500">
             Assistant to use when contacts call back. If not set, a generic prompt is used.
+          </p>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700">
+            Notification Emails
+          </label>
+          <textarea
+            value={notificationEmails}
+            onChange={(e) => setNotificationEmails(e.target.value)}
+            placeholder="admissions@neumont.edu, recruiter@neumont.edu"
+            rows={2}
+            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+          />
+          <p className="mt-1 text-xs text-gray-500">
+            Comma-separated emails to notify when an appointment is booked. A calendar invite will be sent.
           </p>
         </div>
         <div>

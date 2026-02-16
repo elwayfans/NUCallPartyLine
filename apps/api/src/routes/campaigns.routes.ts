@@ -11,6 +11,7 @@ const createCampaignSchema = z.object({
   description: z.string().optional(),
   assistantId: z.string().optional(),
   inboundAssistantId: z.string().nullable().optional(),
+  notificationEmails: z.string().nullable().optional(),
   vapiAssistantId: z.string().optional(),
   vapiPhoneNumberId: z.string().optional(),
   maxConcurrentCalls: z.number().min(1).max(50).optional(),

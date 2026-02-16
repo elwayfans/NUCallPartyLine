@@ -25,6 +25,10 @@ const envSchema = z.object({
   // OpenAI
   OPENAI_API_KEY: z.string().min(1),
 
+  // SendGrid
+  SENDGRID_API_KEY: z.string().optional(),
+  SENDGRID_FROM_EMAIL: z.string().optional(),
+
   // Security
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
 

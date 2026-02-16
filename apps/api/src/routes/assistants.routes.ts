@@ -282,6 +282,7 @@ router.post('/voices/preview', async (req, res, next) => {
 const testCallSchema = z.object({
   phoneNumber: z.string().min(1, 'Phone number is required'),
   inboundAssistantId: z.string().optional(),
+  notificationEmails: z.string().optional(),
   variables: z.object({
     firstName: z.string().optional(),
     lastName: z.string().optional(),
@@ -293,7 +294,7 @@ const testCallSchema = z.object({
 
 router.post('/:id/test-call', async (req, res, next) => {
   try {
-    const { phoneNumber: rawPhone, variables, inboundAssistantId } = testCallSchema.parse(req.body);
+    const { phoneNumber: rawPhone, variables, inboundAssistantId, notificationEmails } = testCallSchema.parse(req.body);
 
     // Normalize to E.164 format
     const phoneNumber = normalizePhoneNumber(rawPhone);
@@ -332,6 +333,7 @@ router.post('/:id/test-call', async (req, res, next) => {
       phoneNumberId,
       assistantConfig: assistantConfig as Record<string, unknown>,
       inboundAssistantId,
+      notificationEmails,
     });
 
     successResponse(res, {

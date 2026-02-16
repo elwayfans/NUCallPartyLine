@@ -220,6 +220,7 @@ export class VapiService {
     assistantConfig: Record<string, any>;
     phoneNumberId?: string;
     inboundAssistantId?: string;
+    notificationEmails?: string;
   }) {
     const callRecord = await prisma.call.create({
       data: {
@@ -228,6 +229,7 @@ export class VapiService {
         status: 'QUEUED',
         direction: 'OUTBOUND',
         inboundAssistantId: params.inboundAssistantId ?? undefined,
+        notificationEmails: params.notificationEmails ?? undefined,
       },
     });
 

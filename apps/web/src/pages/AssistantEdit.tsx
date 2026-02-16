@@ -46,7 +46,7 @@ const assistantsApi = {
   getVoices: () => api.get<{ success: boolean; data: VoiceProvider[] }>('/assistants/voices'),
   previewVoice: (voiceId: string, voiceModel: string, text?: string) =>
     api.post<{ success: boolean; data: { audio: string; text: string } }>('/assistants/voices/preview', { voiceId, voiceModel, text }),
-  testCall: (id: string, data: { phoneNumber: string; variables: Record<string, string>; inboundAssistantId?: string }) =>
+  testCall: (id: string, data: { phoneNumber: string; variables: Record<string, string>; inboundAssistantId?: string; notificationEmails?: string }) =>
     api.post<{ success: boolean; data: { message: string; callId: string; vapiCallId: string } }>(`/assistants/${id}/test-call`, data),
 };
 
@@ -105,6 +105,8 @@ export function AssistantEdit() {
 
   // Inbound assistant for test call callbacks
   const [inboundAssistantId, setInboundAssistantId] = useState('');
+  // Notification emails for appointment booking
+  const [notificationEmails, setNotificationEmails] = useState('');
 
   // Phone test call state
   const [isPhoneCallLoading, setIsPhoneCallLoading] = useState(false);
@@ -342,6 +344,7 @@ export function AssistantEdit() {
         phoneNumber: testVariables.phone,
         variables: testVariables,
         inboundAssistantId: inboundAssistantId || undefined,
+        notificationEmails: notificationEmails.trim() || undefined,
       });
 
       const data = response.data?.data;
@@ -355,7 +358,7 @@ export function AssistantEdit() {
     } finally {
       setIsPhoneCallLoading(false);
     }
-  }, [testVariables, isEditing, id, inboundAssistantId]);
+  }, [testVariables, isEditing, id, inboundAssistantId, notificationEmails]);
 
   const createMutation = useMutation({
     mutationFn: (data: typeof formData) => assistantsApi.create(data),
@@ -786,6 +789,19 @@ export function AssistantEdit() {
             ))}
           </select>
           <p className="mt-1 text-xs text-gray-400">If the person calls back, this assistant handles the inbound call.</p>
+        </div>
+
+        {/* Notification Emails */}
+        <div className="mb-4">
+          <label className="block text-xs font-medium text-gray-600 mb-1">Notification Emails</label>
+          <input
+            type="text"
+            value={notificationEmails}
+            onChange={(e) => setNotificationEmails(e.target.value)}
+            placeholder="admissions@neumont.edu, recruiter@neumont.edu"
+            className="w-full max-w-xs rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+          />
+          <p className="mt-1 text-xs text-gray-400">Comma-separated. Calendar invite sent when appointment is booked.</p>
         </div>
 
         {/* Call Controls */}
