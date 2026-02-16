@@ -120,10 +120,14 @@ export function Calls() {
             </thead>
             <tbody className="divide-y divide-gray-200">
               {calls.map((call) => {
-                const isCompleted = call.status === 'COMPLETED';
-                const isVoicemail = call.status === 'VOICEMAIL';
-                const isFailed = ['FAILED', 'NO_ANSWER', 'BUSY'].includes(call.status);
-                const isFinished = isCompleted || isVoicemail || isFailed;
+                const endedReason = (call.endedReason ?? '').toLowerCase();
+                const isNoAnswer = call.status === 'NO_ANSWER' || call.status === 'BUSY'
+                  || endedReason.includes('did-not-answer') || endedReason.includes('no-answer') || endedReason.includes('busy');
+                const isVoicemail = call.status === 'VOICEMAIL'
+                  || (!isNoAnswer && endedReason.includes('voicemail'));
+                const isFailed = call.status === 'FAILED';
+                const isCompleted = call.status === 'COMPLETED' && !isNoAnswer && !isVoicemail;
+                const isFinished = isCompleted || isVoicemail || isNoAnswer || isFailed;
                 const isConnected = call.outcome && connectedOutcomes.includes(call.outcome);
                 const isNotConnected = call.outcome && notConnectedOutcomes.includes(call.outcome);
                 const hasAppt = (call as any).analytics?.customFields?.appointmentDetails?.scheduled === true;
@@ -149,12 +153,21 @@ export function Calls() {
                   </td>
                   <td className="px-4 py-3 text-sm">
                     {isVoicemail ? <span className="font-medium text-purple-600">Voicemail</span>
-                      : isCompleted ? <span className="font-medium text-green-600">Completed</span>
+                      : isNoAnswer ? <span className="font-medium text-orange-600">No Answer</span>
                       : isFailed ? <span className="font-medium text-red-600">Failed</span>
+                      : call.outcome === 'CALLBACK_REQUESTED' ? <span className="font-medium text-blue-600">Callback Requested</span>
+                      : call.outcome === 'SUCCESS' ? <span className="font-medium text-green-600">Success</span>
+                      : call.outcome === 'PARTIAL' ? <span className="font-medium text-yellow-600">Partial</span>
+                      : call.outcome === 'DECLINED' ? <span className="font-medium text-red-600">Declined</span>
+                      : call.outcome === 'WRONG_NUMBER' ? <span className="font-medium text-red-600">Wrong Number</span>
+                      : call.outcome === 'NO_RESPONSE' ? <span className="font-medium text-orange-600">No Response</span>
+                      : call.outcome === 'TECHNICAL_FAILURE' ? <span className="font-medium text-red-600">Technical Failure</span>
+                      : isCompleted ? <span className="font-medium text-green-600">Completed</span>
                       : <span className="text-gray-400">-</span>}
                   </td>
                   <td className="px-4 py-3 text-sm">
                     {isVoicemail ? <span className="font-medium text-purple-600">VM</span>
+                      : isNoAnswer ? <span className="font-medium text-orange-600">No</span>
                       : isConnected ? <span className="font-medium text-green-600">Connected</span>
                       : isNotConnected ? <span className="font-medium text-red-600">No</span>
                       : <span className="text-gray-400">-</span>}

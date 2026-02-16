@@ -345,9 +345,21 @@ async function handleStatusUpdate(message: VapiWebhookMessage) {
     return;
   }
 
-  const status = mapVapiStatus(vapiStatus);
+  let status = mapVapiStatus(vapiStatus);
+  const endedReason = message.call?.endedReason?.toLowerCase() ?? '';
+
+  // Refine 'ended' status based on endedReason
+  if (vapiStatus === 'ended' && endedReason) {
+    if (endedReason.includes('did-not-answer') || endedReason.includes('no-answer') || endedReason.includes('busy')) {
+      status = 'NO_ANSWER';
+    } else if (endedReason.includes('voicemail')) {
+      status = 'VOICEMAIL';
+    }
+  }
+
   const updateData: Parameters<typeof callsService.updateStatus>[1] = {
     status: status as Parameters<typeof callsService.updateStatus>[1]['status'],
+    endedReason: message.call?.endedReason ?? undefined,
   };
 
   if (vapiStatus === 'in-progress' && !call.startedAt) {
@@ -441,9 +453,14 @@ async function handleEndOfCall(message: VapiWebhookMessage) {
   // Detect voicemail from endedReason or transcript content
   const fullTranscript = artifact?.transcript?.toLowerCase() ?? '';
   const vmPhrases = ['forwarded to voice mail', 'forwarded to voicemail', 'at the tone', 'record your message', 'leave a message after', 'leave your message'];
-  const isVoicemail = endedReason?.toLowerCase().includes('voicemail')
+  const endedReasonLower = endedReason?.toLowerCase() ?? '';
+  const isVoicemail = endedReasonLower.includes('voicemail')
     || vmPhrases.some(p => fullTranscript.includes(p));
-  const finalStatus = isVoicemail ? 'VOICEMAIL' : 'COMPLETED';
+  const isNoAnswer = endedReasonLower.includes('no-answer')
+    || endedReasonLower.includes('customer-did-not-answer')
+    || endedReasonLower.includes('customer-busy')
+    || endedReasonLower.includes('busy');
+  const finalStatus = isVoicemail ? 'VOICEMAIL' : isNoAnswer ? 'NO_ANSWER' : 'COMPLETED';
 
   // Update call record
   const updatedCall = await callsService.updateStatus(call.id, {
