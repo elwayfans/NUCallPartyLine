@@ -64,6 +64,7 @@ model Assistant {
 
   // Call settings
   firstSpeaker    FirstSpeaker @default(ASSISTANT)
+  voicemailMessage String?   @db.Text
 
   // Metadata
   isActive        Boolean   @default(true)

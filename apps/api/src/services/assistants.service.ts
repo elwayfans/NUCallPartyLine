@@ -71,6 +71,7 @@ class AssistantsService {
     voiceModel?: string;
     voiceId?: string;
     firstSpeaker?: 'ASSISTANT' | 'USER';
+    voicemailMessage?: string;
   }) {
     return prisma.assistant.create({
       data: {
@@ -84,6 +85,7 @@ class AssistantsService {
         voiceModel: data.voiceModel ?? 'eleven_turbo_v2_5',
         voiceId: data.voiceId ?? '21m00Tcm4TlvDq8ikWAM',
         firstSpeaker: data.firstSpeaker ?? 'ASSISTANT',
+        voicemailMessage: data.voicemailMessage,
       },
     });
   }
@@ -102,6 +104,7 @@ class AssistantsService {
       voiceId?: string;
       firstSpeaker?: 'ASSISTANT' | 'USER';
       isActive?: boolean;
+      voicemailMessage?: string;
     }
   ) {
     return prisma.assistant.update({
@@ -164,10 +167,17 @@ class AssistantsService {
       email: contactData.email,
     };
 
-    const systemPrompt = this.substituteVariables(assistant.systemPrompt, variables);
+    const voicemailInstruction = `\n\nIMPORTANT — VOICEMAIL HANDLING: If you hear phrases like "forwarded to voice mail", "leave a message", "at the tone", or "record your message", do NOT say goodbye or end the call. Stay silent and wait — the system will automatically detect voicemail and leave a message for you.`;
+    const systemPrompt = this.substituteVariables(assistant.systemPrompt, variables) + voicemailInstruction;
     const firstMessage = assistant.firstMessage
       ? this.substituteVariables(assistant.firstMessage, variables)
       : undefined;
+
+    // Voicemail message — use saved message with variable substitution, or a default
+    const defaultVoicemailMsg = `Hi ${contactData.firstName ?? 'there'}, this is Chris calling from Neumont University. I'm reaching out because you previously showed interest in computer science and tech careers like AI or software engineering. I'd love to connect with you — please give us a call back at 487-444-5484. Thanks, and I look forward to speaking with you!`;
+    const voicemailMessage = assistant.voicemailMessage
+      ? this.substituteVariables(assistant.voicemailMessage, variables)
+      : defaultVoicemailMsg;
 
     return {
       model: {
@@ -190,6 +200,16 @@ class AssistantsService {
       endCallFunctionEnabled: true,
       serverMessages: ['end-of-call-report', 'status-update'],
       analysisPlan: getAnalysisPlan(),
+      voicemailDetection: {
+        provider: 'vapi',
+        backoffPlan: {
+          startAtSeconds: 2,
+          frequencySeconds: 2.5,
+          maxRetries: 6,
+        },
+        beepMaxAwaitSeconds: 30,
+      },
+      voicemailMessage,
     };
   }
 }

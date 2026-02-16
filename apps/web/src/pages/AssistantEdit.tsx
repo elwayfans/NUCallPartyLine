@@ -19,6 +19,7 @@ interface Assistant {
   voiceModel: string;
   voiceId: string;
   firstSpeaker: 'ASSISTANT' | 'USER';
+  voicemailMessage?: string;
   isActive: boolean;
   createdAt: string;
 }
@@ -61,6 +62,8 @@ Key points to cover:
 
 const DEFAULT_FIRST_MESSAGE = `Hi {{firstName}}, this is Sarah calling from the university. Do you have a moment to chat?`;
 
+const DEFAULT_VOICEMAIL_MESSAGE = `Hi {{firstName}}, this is Chris calling from Neumont University. I'm reaching out because you previously showed interest in computer science and tech careers like AI or software engineering. I'd love to connect with you — please give us a call back at 487-444-5484. Thanks, and I look forward to speaking with you!`;
+
 export function AssistantEdit() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -79,6 +82,7 @@ export function AssistantEdit() {
     voiceModel: 'eleven_turbo_v2_5',
     voiceId: '21m00Tcm4TlvDq8ikWAM',
     firstSpeaker: 'ASSISTANT' as 'ASSISTANT' | 'USER',
+    voicemailMessage: DEFAULT_VOICEMAIL_MESSAGE,
   });
 
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
@@ -147,6 +151,7 @@ export function AssistantEdit() {
         voiceModel: assistant.voiceModel || 'eleven_turbo_v2_5',
         voiceId: assistant.voiceId,
         firstSpeaker: assistant.firstSpeaker,
+        voicemailMessage: assistant.voicemailMessage ?? DEFAULT_VOICEMAIL_MESSAGE,
       });
       setHasLoadedAssistant(true);
     }
@@ -596,6 +601,22 @@ export function AssistantEdit() {
                 <option value="ASSISTANT">Assistant speaks first</option>
                 <option value="USER">Wait for user to speak</option>
               </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                Voicemail Message
+              </label>
+              <p className="text-xs text-gray-500 mb-1">
+                Static message played when voicemail is detected. Supports {'{{variables}}'}. If blank, a default message is used.
+              </p>
+              <textarea
+                value={formData.voicemailMessage}
+                onChange={(e) => setFormData({ ...formData, voicemailMessage: e.target.value })}
+                rows={4}
+                placeholder={DEFAULT_VOICEMAIL_MESSAGE}
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              />
             </div>
           </div>
         </div>

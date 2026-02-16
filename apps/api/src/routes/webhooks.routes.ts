@@ -293,9 +293,16 @@ async function handleEndOfCall(message: VapiWebhookMessage) {
     duration = Math.round(endSec + msgDur);
   }
 
+  // Detect voicemail from endedReason or transcript content
+  const fullTranscript = artifact?.transcript?.toLowerCase() ?? '';
+  const vmPhrases = ['forwarded to voice mail', 'forwarded to voicemail', 'at the tone', 'record your message', 'leave a message after', 'leave your message'];
+  const isVoicemail = endedReason?.toLowerCase().includes('voicemail')
+    || vmPhrases.some(p => fullTranscript.includes(p));
+  const finalStatus = isVoicemail ? 'VOICEMAIL' : 'COMPLETED';
+
   // Update call record
   const updatedCall = await callsService.updateStatus(call.id, {
-    status: 'COMPLETED',
+    status: finalStatus as any,
     startedAt: call.startedAt ?? new Date(),
     endedAt: new Date(),
     endedReason: endedReason ?? undefined,
@@ -334,6 +341,9 @@ async function handleEndOfCall(message: VapiWebhookMessage) {
       } else if (reason.includes('error') || reason.includes('failed')) {
         outcome = 'TECHNICAL_FAILURE';
       }
+    }
+    if (isVoicemail) {
+      outcome = 'NO_RESPONSE';
     }
     if (!isSuccess && duration && duration < 15) {
       outcome = 'NO_RESPONSE';

@@ -20,6 +20,7 @@ const createAssistantSchema = z.object({
   voiceModel: z.string().optional(),
   voiceId: z.string().optional(),
   firstSpeaker: z.enum(['ASSISTANT', 'USER']).optional(),
+  voicemailMessage: z.string().optional(),
 });
 
 const updateAssistantSchema = createAssistantSchema.partial().extend({
