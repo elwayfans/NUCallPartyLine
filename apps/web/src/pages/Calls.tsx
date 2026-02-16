@@ -85,6 +85,7 @@ export function Calls() {
         >
           <option value="">All Statuses</option>
           <option value="COMPLETED">Completed</option>
+          <option value="VOICEMAIL">Voicemail</option>
           <option value="FAILED">Failed</option>
           <option value="NO_ANSWER">No Answer</option>
           <option value="IN_PROGRESS">In Progress</option>
@@ -120,7 +121,9 @@ export function Calls() {
             <tbody className="divide-y divide-gray-200">
               {calls.map((call) => {
                 const isCompleted = call.status === 'COMPLETED';
+                const isVoicemail = call.status === 'VOICEMAIL';
                 const isFailed = ['FAILED', 'NO_ANSWER', 'BUSY'].includes(call.status);
+                const isFinished = isCompleted || isVoicemail || isFailed;
                 const isConnected = call.outcome && connectedOutcomes.includes(call.outcome);
                 const isNotConnected = call.outcome && notConnectedOutcomes.includes(call.outcome);
                 const hasAppt = (call as any).analytics?.customFields?.appointmentDetails?.scheduled === true;
@@ -140,18 +143,20 @@ export function Calls() {
                     <CallStatusBadge status={call.status} />
                   </td>
                   <td className="px-4 py-3 text-sm">
-                    {isCompleted ? <span className="font-medium text-green-600">Completed</span>
+                    {isVoicemail ? <span className="font-medium text-purple-600">Voicemail</span>
+                      : isCompleted ? <span className="font-medium text-green-600">Completed</span>
                       : isFailed ? <span className="font-medium text-red-600">Failed</span>
                       : <span className="text-gray-400">-</span>}
                   </td>
                   <td className="px-4 py-3 text-sm">
-                    {isConnected ? <span className="font-medium text-green-600">Connected</span>
+                    {isVoicemail ? <span className="font-medium text-purple-600">VM</span>
+                      : isConnected ? <span className="font-medium text-green-600">Connected</span>
                       : isNotConnected ? <span className="font-medium text-red-600">No</span>
                       : <span className="text-gray-400">-</span>}
                   </td>
                   <td className="px-4 py-3 text-sm">
                     {hasAppt ? <span className="font-medium text-green-600">Booked</span>
-                      : (isCompleted || isFailed) ? <span className="font-medium text-red-600">No</span>
+                      : isFinished ? <span className="font-medium text-red-600">No</span>
                       : <span className="text-gray-400">-</span>}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-500">
