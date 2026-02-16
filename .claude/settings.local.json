@@ -23,7 +23,12 @@
       "WebFetch(domain:vapi.ai)",
       "WebFetch(domain:calllogs.vapi.ai)",
       "Bash(curl:*)",
-      "Bash(gunzip:*)"
+      "Bash(gunzip:*)",
+      "WebFetch(domain:support.vapi.ai)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:api.vapi.ai)",
+      "Bash(DATABASE_URL=\"postgresql://NUCallPartyLine:NUCallPartyLine@localhost:5432/NUCallPartyLine?schema=public\" npx prisma db push:*)"
     ]
   }
 }

@@ -4,6 +4,7 @@ import type { CallOutcome } from '@prisma/client';
 import * as chrono from 'chrono-node';
 import { prisma } from '../config/database.js';
 import { callsService } from '../services/calls.service.js';
+import { assistantsService, getAnalysisPlan } from '../services/assistants.service.js';
 import { wsService } from '../index.js';
 
 const router = Router();
@@ -12,10 +13,15 @@ interface VapiWebhookMessage {
   type: string;
   call?: {
     id: string;
+    type?: string;
     status?: string;
     duration?: number;
     cost?: number;
     endedReason?: string;
+  };
+  customer?: {
+    number?: string;
+    name?: string;
   };
   artifact?: {
     // VAPI recording structure: mono.combinedUrl, stereoUrl, or legacy url
@@ -87,6 +93,18 @@ router.post('/vapi', async (req, res) => {
     },
   });
 
+  // Auto-create call record for inbound calls not yet in our DB
+  if (vapiCallId) {
+    const callType = payload.message?.call?.type;
+    const customerNumber = payload.message?.customer?.number;
+    if (callType === 'inboundPhoneCall' && customerNumber) {
+      const existing = await callsService.findByVapiCallId(vapiCallId);
+      if (!existing) {
+        await createInboundCallRecord(vapiCallId, customerNumber);
+      }
+    }
+  }
+
   try {
     switch (eventType) {
       case 'status-update':
@@ -100,6 +118,14 @@ router.post('/vapi', async (req, res) => {
       case 'end-of-call-report':
         await handleEndOfCall(payload.message);
         break;
+
+      case 'assistant-request': {
+        // Inbound call — VAPI asks us which assistant to use.
+        // Return full assistant config with our analysisPlan so structured data is extracted.
+        const customerNumber = payload.message?.customer?.number;
+        const config = await buildInboundAssistantConfig(customerNumber);
+        return res.status(200).json({ assistant: config });
+      }
 
       case 'conversation-update':
         // Live conversation updates - emit via WebSocket
@@ -186,6 +212,124 @@ async function promoteQueuedCall(vapiCallId: string) {
     status: updatedCall.status,
     campaignId: updatedCall.campaignId,
   });
+}
+
+/**
+ * Create a call record for an inbound callback.
+ * Links to the most recent outbound call to the same phone number.
+ */
+async function createInboundCallRecord(vapiCallId: string, customerNumber: string) {
+  // Find the most recent outbound call to this phone number
+  const recentCall = await prisma.call.findFirst({
+    where: {
+      phoneNumber: customerNumber,
+      direction: 'OUTBOUND',
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  const callRecord = await prisma.call.create({
+    data: {
+      vapiCallId,
+      phoneNumber: customerNumber,
+      vapiAssistantId: 'inbound',
+      status: 'IN_PROGRESS',
+      direction: 'INBOUND',
+      contactId: recentCall?.contactId ?? undefined,
+      campaignId: recentCall?.campaignId ?? undefined,
+      startedAt: new Date(),
+    },
+  });
+
+  console.log(
+    `Created INBOUND call record ${callRecord.id} for ${customerNumber}` +
+    (recentCall
+      ? ` (linked to outbound call ${recentCall.id}, contact: ${recentCall.contactId}, campaign: ${recentCall.campaignId})`
+      : ' (no matching outbound call found)')
+  );
+}
+
+/**
+ * Build an assistant config for inbound calls.
+ * Looks up the most recent outbound call to this phone number, then:
+ *   1. If it belongs to a campaign → uses campaign.inboundAssistantId
+ *   2. If it's a test call (no campaign) → uses call.inboundAssistantId
+ *   3. Falls back to a generic inbound prompt
+ * Always appends our analysisPlan for structured data extraction.
+ */
+async function buildInboundAssistantConfig(customerNumber?: string) {
+  const analysisPlan = getAnalysisPlan();
+
+  // Look up the caller's contact info and inbound assistant from the most recent outbound call
+  let contactData: { firstName?: string; lastName?: string; phoneNumber?: string; email?: string } = {};
+  let inboundAssistantId: string | null = null;
+
+  if (customerNumber) {
+    const recentCall = await prisma.call.findFirst({
+      where: { phoneNumber: customerNumber, direction: 'OUTBOUND' },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        contact: true,
+        campaign: { select: { inboundAssistantId: true } },
+      },
+    });
+
+    if (recentCall?.contact) {
+      contactData = {
+        firstName: recentCall.contact.firstName,
+        lastName: recentCall.contact.lastName,
+        phoneNumber: customerNumber,
+        email: recentCall.contact.email ?? undefined,
+      };
+    }
+
+    // Resolve inbound assistant: campaign setting first, then call-level (test calls)
+    inboundAssistantId = recentCall?.campaign?.inboundAssistantId
+      ?? recentCall?.inboundAssistantId
+      ?? null;
+  }
+
+  // If an inbound assistant was found, use its full script
+  if (inboundAssistantId) {
+    try {
+      const config = await assistantsService.getCallConfig(inboundAssistantId, contactData);
+      // Override analysisPlan with ours (ensures structured data extraction) and strip voicemail detection
+      const { voicemailDetection, voicemailMessage, analysisPlan: _ignored, ...rest } = config as any;
+      return {
+        ...rest,
+        analysisPlan,
+      };
+    } catch (err) {
+      console.error(`Failed to load inbound assistant ${inboundAssistantId}:`, err);
+      // Fall through to generic config
+    }
+  }
+
+  // Fallback: generic inbound prompt
+  const fallbackPrompt = [
+    'You are Chris, a friendly and enthusiastic AI assistant for Neumont University.',
+    'This is an INBOUND call — the contact is calling you back.',
+    'Greet them warmly. Answer questions about Neumont University and try to schedule an admissions call.',
+    'Be conversational and natural.',
+  ].join('\n');
+
+  return {
+    model: {
+      provider: 'openai',
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'system', content: fallbackPrompt }],
+    },
+    voice: {
+      provider: '11labs',
+      model: 'eleven_turbo_v2_5',
+      voiceId: '21m00Tcm4TlvDq8ikWAM',
+    },
+    firstMessage: `Hi! Thanks for calling Neumont University. This is Chris. Who am I speaking with?`,
+    firstMessageMode: 'assistant-speaks-first',
+    endCallFunctionEnabled: true,
+    serverMessages: ['end-of-call-report', 'status-update'],
+    analysisPlan,
+  };
 }
 
 async function handleStatusUpdate(message: VapiWebhookMessage) {
@@ -436,11 +580,30 @@ async function handleEndOfCall(message: VapiWebhookMessage) {
 
     console.log(`VAPI analytics processed for call ${call.id} - outcome: ${outcome}, sentiment: ${overallSentiment}, interest: ${sd?.interestLevel}`);
 
+    // If this is an inbound callback with a good outcome, update the original outbound call
+    if (call.direction === 'INBOUND' && (outcome === 'SUCCESS' || outcome === 'PARTIAL')) {
+      const originalCall = await prisma.call.findFirst({
+        where: {
+          phoneNumber: call.phoneNumber,
+          direction: 'OUTBOUND',
+          id: { not: call.id },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (originalCall) {
+        await prisma.call.update({
+          where: { id: originalCall.id },
+          data: { outcome },
+        });
+        console.log(`Callback ${outcome}: updated original outbound call ${originalCall.id} outcome`);
+      }
+    }
+
     wsService.emitCallAnalyticsReady(call.id);
   }
 
-  // Update campaign contact status
-  if (call.campaignId && call.contactId) {
+  // Update campaign contact status (skip for inbound callbacks to avoid double-counting)
+  if (call.direction !== 'INBOUND' && call.campaignId && call.contactId) {
     await prisma.campaignContact.updateMany({
       where: {
         campaignId: call.campaignId,

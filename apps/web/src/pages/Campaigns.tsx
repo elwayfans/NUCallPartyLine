@@ -283,6 +283,7 @@ function CreateCampaignModal({
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [assistantId, setAssistantId] = useState('');
+  const [inboundAssistantId, setInboundAssistantId] = useState('');
   const queryClient = useQueryClient();
 
   // Fetch available assistants
@@ -295,7 +296,7 @@ function CreateCampaignModal({
   const assistants = assistantsData?.data?.data ?? [];
 
   const createMutation = useMutation({
-    mutationFn: (data: { name: string; description?: string; assistantId?: string }) =>
+    mutationFn: (data: { name: string; description?: string; assistantId?: string; inboundAssistantId?: string | null }) =>
       campaignsApi.create(data),
     onSuccess: (response) => {
       toast.success('Campaign created');
@@ -303,6 +304,7 @@ function CreateCampaignModal({
       setName('');
       setDescription('');
       setAssistantId('');
+      setInboundAssistantId('');
       onCreated(response.data.data.id);
     },
     onError: (error: Error) => {
@@ -324,6 +326,7 @@ function CreateCampaignModal({
       name: name.trim(),
       description: description.trim() || undefined,
       assistantId,
+      inboundAssistantId: inboundAssistantId || null,
     });
   };
 
@@ -363,6 +366,26 @@ function CreateCampaignModal({
               No assistants yet. Create one in the Assistants page first.
             </p>
           )}
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700">
+            Inbound Assistant (for callbacks)
+          </label>
+          <select
+            value={inboundAssistantId}
+            onChange={(e) => setInboundAssistantId(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+          >
+            <option value="">None (use generic prompt)</option>
+            {assistants.map((assistant: { id: string; name: string; description?: string }) => (
+              <option key={assistant.id} value={assistant.id}>
+                {assistant.name} {assistant.description ? `- ${assistant.description}` : ''}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-gray-500">
+            Assistant to use when contacts call back. If not set, a generic prompt is used.
+          </p>
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700">

@@ -219,6 +219,7 @@ export class VapiService {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     assistantConfig: Record<string, any>;
     phoneNumberId?: string;
+    inboundAssistantId?: string;
   }) {
     const callRecord = await prisma.call.create({
       data: {
@@ -226,6 +227,7 @@ export class VapiService {
         vapiAssistantId: params.assistantId,
         status: 'QUEUED',
         direction: 'OUTBOUND',
+        inboundAssistantId: params.inboundAssistantId ?? undefined,
       },
     });
 

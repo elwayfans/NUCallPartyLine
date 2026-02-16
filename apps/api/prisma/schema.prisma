@@ -71,7 +71,8 @@ model Assistant {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  campaigns       Campaign[]
+  campaigns          Campaign[] @relation("CampaignOutboundAssistant")
+  inboundCampaigns   Campaign[] @relation("CampaignInboundAssistant")
 
   @@index([isActive])
 }
@@ -93,7 +94,11 @@ model Campaign {
 
   // Local assistant reference (replaces vapiAssistantId)
   assistantId       String?
-  assistant         Assistant?     @relation(fields: [assistantId], references: [id])
+  assistant         Assistant?     @relation("CampaignOutboundAssistant", fields: [assistantId], references: [id])
+
+  // Inbound assistant for handling callbacks to this campaign
+  inboundAssistantId String?
+  inboundAssistant   Assistant?    @relation("CampaignInboundAssistant", fields: [inboundAssistantId], references: [id])
 
   // Legacy VAPI assistant ID (for backwards compatibility)
   vapiAssistantId   String?
@@ -167,6 +172,9 @@ model Call {
 
   vapiCallId      String?       @unique
   vapiAssistantId String
+
+  // Inbound assistant to use for callbacks from this call (test calls only; campaign calls use campaign.inboundAssistantId)
+  inboundAssistantId String?
 
   status          CallStatus    @default(QUEUED)
   direction       CallDirection @default(OUTBOUND)

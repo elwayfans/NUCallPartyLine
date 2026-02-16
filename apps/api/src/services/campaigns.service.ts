@@ -69,6 +69,7 @@ export class CampaignsService {
       where: { id },
       include: {
         assistant: { select: { id: true, name: true } },
+        inboundAssistant: { select: { id: true, name: true } },
         campaignContacts: {
           include: {
             contact: true,
@@ -95,6 +96,7 @@ export class CampaignsService {
     name: string;
     description?: string;
     assistantId?: string;
+    inboundAssistantId?: string | null;
     vapiAssistantId?: string;
     vapiPhoneNumberId?: string;
     maxConcurrentCalls?: number;
@@ -106,6 +108,7 @@ export class CampaignsService {
         name: data.name,
         description: data.description,
         assistantId: data.assistantId,
+        inboundAssistantId: data.inboundAssistantId ?? undefined,
         vapiAssistantId: data.vapiAssistantId ?? env.VAPI_ASSISTANT_ID,
         vapiPhoneNumberId: data.vapiPhoneNumberId ?? env.VAPI_PHONE_NUMBER_ID,
         maxConcurrentCalls: data.maxConcurrentCalls ?? env.MAX_CONCURRENT_CALLS,
@@ -122,6 +125,7 @@ export class CampaignsService {
       name: string;
       description: string | null;
       assistantId: string;
+      inboundAssistantId: string | null;
       vapiAssistantId: string;
       vapiPhoneNumberId: string | null;
       maxConcurrentCalls: number;

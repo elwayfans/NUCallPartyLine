@@ -44,6 +44,8 @@ export interface Campaign {
   status: 'DRAFT' | 'SCHEDULED' | 'IN_PROGRESS' | 'PAUSED' | 'COMPLETED' | 'CANCELLED';
   assistantId?: string | null;
   assistant?: { id: string; name: string } | null;
+  inboundAssistantId?: string | null;
+  inboundAssistant?: { id: string; name: string } | null;
   vapiAssistantId: string;
   vapiPhoneNumberId?: string | null;
   totalContacts: number;
@@ -101,6 +103,7 @@ export interface Call {
   contactId?: string | null;
   vapiCallId?: string | null;
   status: string;
+  direction?: 'OUTBOUND' | 'INBOUND';
   outcome?: string | null;
   phoneNumber: string;
   duration?: number | null;
@@ -187,6 +190,7 @@ export const campaignsApi = {
     name: string;
     description?: string;
     assistantId?: string;
+    inboundAssistantId?: string | null;
     vapiAssistantId?: string;
     maxConcurrentCalls?: number;
   }) => api.post<ApiResponse<Campaign>>('/campaigns', data),

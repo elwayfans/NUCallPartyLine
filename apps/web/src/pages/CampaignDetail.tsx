@@ -101,7 +101,7 @@ export function CampaignDetail() {
   const assistants: Array<{ id: string; name: string }> = assistantsData?.data?.data ?? [];
 
   const updateAssistantMutation = useMutation({
-    mutationFn: (assistantId: string) => campaignsApi.update(id!, { assistantId } as any),
+    mutationFn: (data: { assistantId?: string; inboundAssistantId?: string | null }) => campaignsApi.update(id!, data as any),
     onSuccess: () => {
       toast.success('Assistant updated');
       queryClient.invalidateQueries({ queryKey: ['campaign', id] });
@@ -149,11 +149,17 @@ export function CampaignDetail() {
     ? Math.round(((campaign.completedCalls + campaign.failedCalls) / campaign.totalContacts) * 100)
     : 0;
 
-  // Compute outcome stats from calls
+  // Separate outbound calls from inbound callbacks
+  const outboundCalls = calls.filter((c) => (c as any).direction !== 'INBOUND');
+  const callbackCalls = calls.filter((c) => (c as any).direction === 'INBOUND');
+  const callbackCount = callbackCalls.length;
+
+  // Compute outcome stats from outbound calls only
   const connectedOutcomes = ['SUCCESS', 'PARTIAL', 'CALLBACK_REQUESTED', 'DECLINED'];
   const notConnectedOutcomes = ['NO_RESPONSE', 'WRONG_NUMBER', 'TECHNICAL_FAILURE'];
-  const connected = calls.filter((c) => c.outcome && connectedOutcomes.includes(c.outcome)).length;
-  const notConnected = calls.filter((c) => c.outcome && notConnectedOutcomes.includes(c.outcome)).length;
+  const connected = outboundCalls.filter((c) => c.outcome && connectedOutcomes.includes(c.outcome)).length;
+  const notConnected = outboundCalls.filter((c) => c.outcome && notConnectedOutcomes.includes(c.outcome)).length;
+  // Appointments from ALL calls (callbacks can book appointments too)
   const appointmentsBooked = calls.filter((c) => {
     const cf = (c as any).analytics?.customFields;
     return cf?.appointmentDetails?.scheduled === true;
@@ -183,7 +189,7 @@ export function CampaignDetail() {
               <select
                 value={campaign.assistantId ?? ''}
                 onChange={(e) => {
-                  if (e.target.value) updateAssistantMutation.mutate(e.target.value);
+                  if (e.target.value) updateAssistantMutation.mutate({ assistantId: e.target.value });
                 }}
                 className="rounded border border-gray-300 px-2 py-0.5 text-sm text-gray-700 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
               >
@@ -195,6 +201,27 @@ export function CampaignDetail() {
             ) : (
               <span className="font-medium text-gray-700">
                 {campaign.assistant?.name ?? 'Not set'}
+              </span>
+            )}
+          </div>
+          <div className="mt-1 flex items-center gap-2 text-sm">
+            <span className="text-gray-500">Inbound (callbacks):</span>
+            {isDraft ? (
+              <select
+                value={campaign.inboundAssistantId ?? ''}
+                onChange={(e) => {
+                  updateAssistantMutation.mutate({ inboundAssistantId: e.target.value || null });
+                }}
+                className="rounded border border-gray-300 px-2 py-0.5 text-sm text-gray-700 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              >
+                <option value="">None (generic)</option>
+                {assistants.map((a) => (
+                  <option key={a.id} value={a.id}>{a.name}</option>
+                ))}
+              </select>
+            ) : (
+              <span className="font-medium text-gray-700">
+                {(campaign as any).inboundAssistant?.name ?? 'None'}
               </span>
             )}
           </div>
@@ -313,7 +340,10 @@ export function CampaignDetail() {
         <div className="rounded-lg border border-gray-200 bg-white p-4">
           <div className="flex justify-between text-sm text-gray-500 mb-2">
             <span>Campaign Progress</span>
-            <span>{campaign.completedCalls + campaign.failedCalls} / {campaign.totalContacts} calls</span>
+            <span>
+              {campaign.completedCalls + campaign.failedCalls} / {campaign.totalContacts} calls
+              {callbackCount > 0 && <span className="ml-1 text-blue-600">(+{callbackCount} callback{callbackCount !== 1 ? 's' : ''})</span>}
+            </span>
           </div>
           <div className="h-3 overflow-hidden rounded-full bg-gray-200">
             <div
@@ -434,7 +464,7 @@ export function CampaignDetail() {
       <div className="rounded-lg border border-gray-200 bg-white shadow">
         <div className="border-b border-gray-200 px-4 py-3">
           <h2 className="font-semibold text-gray-900">
-              Calls ({calls.length})
+              Calls ({calls.length}){callbackCount > 0 && <span className="ml-1 text-sm font-normal text-blue-600">incl. {callbackCount} callback{callbackCount !== 1 ? 's' : ''}</span>}
             </h2>
         </div>
         {calls.length === 0 ? (
@@ -457,7 +487,10 @@ export function CampaignDetail() {
             <tbody className="divide-y divide-gray-200">
               {calls.map((call) => {
                 const isCompleted = call.status === 'COMPLETED';
+                const isVoicemail = call.status === 'VOICEMAIL';
                 const isFailed = ['FAILED', 'NO_ANSWER', 'BUSY'].includes(call.status);
+                const isFinished = isCompleted || isVoicemail || isFailed;
+                const isCallback = (call as any).direction === 'INBOUND';
                 const isConnected = call.outcome && connectedOutcomes.includes(call.outcome);
                 const isNotConnected = call.outcome && notConnectedOutcomes.includes(call.outcome);
                 const hasAppt = (call as any).analytics?.customFields?.appointmentDetails?.scheduled === true;
@@ -468,27 +501,34 @@ export function CampaignDetail() {
                   onClick={() => navigate(`/calls/${call.id}`, { state: { from: `/campaigns/${id}` } })}
                 >
                   <td className="px-4 py-3">
-                    <p className="font-medium text-gray-900">
-                      {call.contact ? `${call.contact.firstName} ${call.contact.lastName}` : <span className="italic text-gray-400">&lt;Test Call&gt;</span>}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-gray-900">
+                        {call.contact ? `${call.contact.firstName} ${call.contact.lastName}` : <span className="italic text-gray-400">&lt;Test Call&gt;</span>}
+                      </p>
+                      {isCallback && (
+                        <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">Callback</span>
+                      )}
+                    </div>
                     <p className="text-sm text-gray-500">{call.phoneNumber}</p>
                   </td>
                   <td className="px-4 py-3">
                     <CallStatusBadge status={call.status} />
                   </td>
                   <td className="px-4 py-3 text-sm">
-                    {isCompleted ? <span className="font-medium text-green-600">Completed</span>
+                    {isVoicemail ? <span className="font-medium text-purple-600">Voicemail</span>
+                      : isCompleted ? <span className="font-medium text-green-600">Completed</span>
                       : isFailed ? <span className="font-medium text-red-600">Failed</span>
                       : <span className="text-gray-400">-</span>}
                   </td>
                   <td className="px-4 py-3 text-sm">
-                    {isConnected ? <span className="font-medium text-green-600">Connected</span>
+                    {isVoicemail ? <span className="font-medium text-purple-600">VM</span>
+                      : isConnected ? <span className="font-medium text-green-600">Connected</span>
                       : isNotConnected ? <span className="font-medium text-red-600">No</span>
                       : <span className="text-gray-400">-</span>}
                   </td>
                   <td className="px-4 py-3 text-sm">
                     {hasAppt ? <span className="font-medium text-green-600">Booked</span>
-                      : (isCompleted || isFailed) ? <span className="font-medium text-red-600">No</span>
+                      : isFinished ? <span className="font-medium text-red-600">No</span>
                       : <span className="text-gray-400">-</span>}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-500">
@@ -550,6 +590,7 @@ function CallStatusBadge({ status }: { status: string }) {
     FAILED: 'error',
     NO_ANSWER: 'error',
     BUSY: 'error',
+    VOICEMAIL: 'default',
     CANCELLED: 'default',
   };
   return <Badge variant={variants[status] || 'default'}>{status}</Badge>;

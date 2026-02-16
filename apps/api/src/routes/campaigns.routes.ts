@@ -10,6 +10,7 @@ const createCampaignSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   description: z.string().optional(),
   assistantId: z.string().optional(),
+  inboundAssistantId: z.string().nullable().optional(),
   vapiAssistantId: z.string().optional(),
   vapiPhoneNumberId: z.string().optional(),
   maxConcurrentCalls: z.number().min(1).max(50).optional(),

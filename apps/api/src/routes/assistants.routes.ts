@@ -281,6 +281,7 @@ router.post('/voices/preview', async (req, res, next) => {
 // POST /api/assistants/:id/test-call - Make a real outbound test call
 const testCallSchema = z.object({
   phoneNumber: z.string().min(1, 'Phone number is required'),
+  inboundAssistantId: z.string().optional(),
   variables: z.object({
     firstName: z.string().optional(),
     lastName: z.string().optional(),
@@ -292,7 +293,7 @@ const testCallSchema = z.object({
 
 router.post('/:id/test-call', async (req, res, next) => {
   try {
-    const { phoneNumber: rawPhone, variables } = testCallSchema.parse(req.body);
+    const { phoneNumber: rawPhone, variables, inboundAssistantId } = testCallSchema.parse(req.body);
 
     // Normalize to E.164 format
     const phoneNumber = normalizePhoneNumber(rawPhone);
@@ -330,6 +331,7 @@ router.post('/:id/test-call', async (req, res, next) => {
       phoneNumber,
       phoneNumberId,
       assistantConfig: assistantConfig as Record<string, unknown>,
+      inboundAssistantId,
     });
 
     successResponse(res, {

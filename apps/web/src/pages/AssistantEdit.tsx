@@ -46,7 +46,7 @@ const assistantsApi = {
   getVoices: () => api.get<{ success: boolean; data: VoiceProvider[] }>('/assistants/voices'),
   previewVoice: (voiceId: string, voiceModel: string, text?: string) =>
     api.post<{ success: boolean; data: { audio: string; text: string } }>('/assistants/voices/preview', { voiceId, voiceModel, text }),
-  testCall: (id: string, data: { phoneNumber: string; variables: Record<string, string> }) =>
+  testCall: (id: string, data: { phoneNumber: string; variables: Record<string, string>; inboundAssistantId?: string }) =>
     api.post<{ success: boolean; data: { message: string; callId: string; vapiCallId: string } }>(`/assistants/${id}/test-call`, data),
 };
 
@@ -103,6 +103,9 @@ export function AssistantEdit() {
   const vapiRef = useRef<Vapi | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
 
+  // Inbound assistant for test call callbacks
+  const [inboundAssistantId, setInboundAssistantId] = useState('');
+
   // Phone test call state
   const [isPhoneCallLoading, setIsPhoneCallLoading] = useState(false);
   const [phoneCallResult, setPhoneCallResult] = useState<{ callId: string; vapiCallId: string } | null>(null);
@@ -124,6 +127,12 @@ export function AssistantEdit() {
   const { data: voicesData } = useQuery({
     queryKey: ['voices'],
     queryFn: () => assistantsApi.getVoices(),
+  });
+
+  // Fetch all assistants for inbound callback picker
+  const { data: allAssistantsData } = useQuery({
+    queryKey: ['assistants'],
+    queryFn: () => api.get('/assistants'),
   });
 
   const modelProviders = modelsData?.data?.data ?? [];
@@ -332,6 +341,7 @@ export function AssistantEdit() {
       const response = await assistantsApi.testCall(id, {
         phoneNumber: testVariables.phone,
         variables: testVariables,
+        inboundAssistantId: inboundAssistantId || undefined,
       });
 
       const data = response.data?.data;
@@ -345,7 +355,7 @@ export function AssistantEdit() {
     } finally {
       setIsPhoneCallLoading(false);
     }
-  }, [testVariables, isEditing, id]);
+  }, [testVariables, isEditing, id, inboundAssistantId]);
 
   const createMutation = useMutation({
     mutationFn: (data: typeof formData) => assistantsApi.create(data),
@@ -760,6 +770,22 @@ export function AssistantEdit() {
               className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
             />
           </div>
+        </div>
+
+        {/* Inbound Assistant for callbacks */}
+        <div className="mb-4">
+          <label className="block text-xs font-medium text-gray-600 mb-1">Inbound Assistant (for callbacks)</label>
+          <select
+            value={inboundAssistantId}
+            onChange={(e) => setInboundAssistantId(e.target.value)}
+            className="w-full max-w-xs rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+          >
+            <option value="">None (generic prompt)</option>
+            {(allAssistantsData?.data?.data ?? []).map((a: { id: string; name: string }) => (
+              <option key={a.id} value={a.id}>{a.name}</option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-gray-400">If the person calls back, this assistant handles the inbound call.</p>
         </div>
 
         {/* Call Controls */}

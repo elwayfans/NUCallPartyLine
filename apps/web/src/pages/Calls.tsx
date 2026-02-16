@@ -134,9 +134,14 @@ export function Calls() {
                   onClick={() => navigate(`/calls/${call.id}`)}
                 >
                   <td className="px-4 py-3">
-                    <p className="font-medium text-gray-900">
-                      {call.contact ? `${call.contact.firstName} ${call.contact.lastName}` : <span className="italic text-gray-400">&lt;Test Call&gt;</span>}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-gray-900">
+                        {call.contact ? `${call.contact.firstName} ${call.contact.lastName}` : <span className="italic text-gray-400">&lt;Test Call&gt;</span>}
+                      </p>
+                      {call.direction === 'INBOUND' && (
+                        <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">Callback</span>
+                      )}
+                    </div>
                     <p className="text-sm text-gray-500">{call.phoneNumber}</p>
                   </td>
                   <td className="px-4 py-3">
